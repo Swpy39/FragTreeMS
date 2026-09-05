@@ -1074,7 +1074,7 @@ if __name__ == "__main__":
 
 """
 
-python run_openai_aromatic_hydrocarbon.py --input_file ../difference_types_SMILES/non-process/aromatic_hydrocarbon.json --output_file ./aromatic_hydrocarbon_non_process_outputs/openai_gpt41_test_results.json ^ --model gpt-4.1 --temperature 0.0 --id_min 1 --id_max 1957 --api_key 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
+python run_openai_aromatic_hydrocarbon.py --input_file ../difference_types_SMILES/non-process/aromatic_hydrocarbon.json --output_file ./aromatic_hydrocarbon_non_process_outputs/openai_gpt41_test_results.json ^ --model gpt-4.1 --temperature 0.0 --id_min 1 --id_max 1957 --api_key xx
 
 """
 
