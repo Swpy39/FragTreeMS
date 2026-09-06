@@ -5,7 +5,7 @@ FragTreeMS is a mechanism-grounded framework for interpretable electron ionizati
 <p align="center">
   <img src="./Images/Figure1.png"
        alt="Conceptual overview of FragTreeMS"
-       width="60%">
+       width="70%">
 </p>
 
 **Figure 1 | Conceptual overview of FragTreeMS.** Conventional structure-to-spectrum methods predict spectral patterns without explicitly representing the ion formation process. FragTreeMS instead organizes fragmentation chemistry as source-mechanism-product relations, repairs plausible omissions in the resulting tree and uses the complete pathway from the molecular root to each product ion for intensity prediction.
@@ -30,26 +30,28 @@ The repaired tree is not used only as a post hoc explanation. The complete pathw
 ```text
 FragTreeMS/
 ├── annotation_pipeline/
-│   ├── 01_generation/
-│   ├── 02_refinement/
-│   └── 03_finalization/
-├── stage1_tree_reasoning/
+│   ├── generation/
+│   ├── refinement/
+│   └── finalization/
+├── stage1_tree_generation/
 ├── stage2_intensity_prediction/
 ├── data/
-│   ├── 01_generation_data/
-│   ├── 02_refinement_data/
-│   └── 03_finalization_data/
+│   ├── acyclic_alkane_data/
+│   ├── alkene_data/
+│   ├── cycloalkane_data/
+│   └── aromatic_hydrocarbon_data/
 ├── Images/
-└── README.md
+├── README.md
+└── requirements.txt
 ```
 
 | Directory                      | Description                                                  |
 | ------------------------------ | ------------------------------------------------------------ |
 | `annotation_pipeline/`         | Scripts for initial annotation generation, refinement and final correction. |
-| `stage1_tree_reasoning/`       | Training and inference code for fragmentation tree generation and self-review repair. |
+| `stage1_tree_generation/`      | Training and inference code for fragmentation tree generation and self-review repair. |
 | `stage2_intensity_prediction/` | Training and inference code for pathway-conditioned intensity prediction. |
 | `data/`                        | Example of annotated data format. |
-| `Image/`                       | Images for this project. |
+| `Images/`                      | Images for this project. |
 
 ## Current scope
 
