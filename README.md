@@ -2,7 +2,11 @@
 
 FragTreeMS is a mechanism-grounded framework for interpretable electron ionization (EI) mass spectrum prediction. It generates and repairs explicit fragmentation trees and uses complete ion formation pathways to predict peak intensities.
 
-![Conceptual overview of FragTreeMS](./Figure1.png)
+<p align="center">
+  <img src="./Images/Figure1.png"
+       alt="Conceptual overview of FragTreeMS"
+       width="60%">
+</p>
 
 **Figure 1 | Conceptual overview of FragTreeMS.** Conventional structure-to-spectrum methods predict spectral patterns without explicitly representing the ion formation process. FragTreeMS instead organizes fragmentation chemistry as source-mechanism-product relations, repairs plausible omissions in the resulting tree and uses the complete pathway from the molecular root to each product ion for intensity prediction.
 
@@ -56,3 +60,5 @@ The tree reasoning experiments use Qwen3-8B, Llama3.1-8B-Instruct and Qwen2.5-14
 ## Visualization
 
 FragTreeMS provides molecule-level visualizations of the inferred fragmentation tree, repaired product ions, complete formation pathways and predicted EI spectrum. The interactive demonstration is available at [https://pec.cup.edu.cn/FragTreeMS](https://pec.cup.edu.cn/FragTreeMS).
+
+![Conceptual overview of FragTreeMS](./Images/visualization.png)
