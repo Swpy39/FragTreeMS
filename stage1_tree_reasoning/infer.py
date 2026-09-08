@@ -45,7 +45,7 @@ import torch.nn.functional as F
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from fitgraph_ion_recall_common_v2 import (
+from fittree import (
     build_chat_prompt,
     build_fitgraph,
     build_repair_chat_prompt,
