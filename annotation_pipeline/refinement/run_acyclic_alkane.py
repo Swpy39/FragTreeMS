@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-
-import argparse
 import copy
 import json
 import os
@@ -10,15 +7,6 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
-
-
-INPUT_FILE = "./difference_types_SMILES/acyclic_alkane.json"
-OUTPUT_FILE = "./outputs/acyclic_alkane_judge_results.json"
-CORRECTED_OUTPUT_FILE = "./outputs/acyclic_alkane_corrected.json"
-
-MODEL = "gpt-4.1"
-TEMPERATURE = 0.0
-API_KEY = os.environ.get("OPENAI_API_KEY")
 
 
 SYSTEM_PROMPT = r"""
@@ -443,12 +431,291 @@ Rules:
 Forbidden:
 - Never output verdict="delete".
 - Never output corrected_triplet=[].
+"""
+
+
+INPUT_FILE = "./acyclic_alkane_outputs/openai_gpt41_test_results.json"
+OUTPUT_FILE = "./acyclic_alkane_outputs/openai_gpt41_test_results_judge_all.json"
+CORRECTED_OUTPUT_FILE = "./acyclic_alkane_outputs/openai_gpt41_test_results_judge_extract.json"
+
+MODEL = "gpt-4.1"
+TEMPERATURE = 0.0
+API_KEY = os.environ.get("OPENAI_API_KEY")
+
+START = 0
+LIMIT = None
+ID_MIN = None
+ID_MAX = None
+
+SLEEP_SECONDS = 0.0
+SAVE_EVERY = 1
+USE_JSON_MODE = False
+SKIP_EXISTING = False
+KEEP_FAILED_ORIGINAL = True
+INCLUDE_UNSAFE_IN_CORRECTED = True
+SEMANTIC_RETRY = 2
+
+
+ION_RE = re.compile(
+    r"([A-Z][A-Za-z0-9?]*(?:\+|＋)?(?:[•·])?)\s*\(m/z\s*(\d+)\)"
+)
+FORMULA_RE = re.compile(r"([A-Z][a-z]?)(\d*)")
+
+
+def load_json(path: str) -> Any:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_json(obj: Any, path: str) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+
+
+def normalize_triplet(triplet: Any) -> Optional[List[str]]:
+    if isinstance(triplet, list) and len(triplet) == 3:
+        return [str(triplet[0]), str(triplet[1]), str(triplet[2])]
+    return None
+
+
+def parse_formula_counts(formula: str) -> Dict[str, int]:
+    if not isinstance(formula, str):
+        return {}
+
+    formula = (
+        formula.replace("+", "")
+        .replace("＋", "")
+        .replace("•", "")
+        .replace("·", "")
+        .replace("?", "")
+    )
+
+    counts: Dict[str, int] = defaultdict(int)
+    for element, num in FORMULA_RE.findall(formula):
+        counts[element] += int(num) if num else 1
+
+    return dict(counts)
+
+
+def nominal_mass(counts: Dict[str, int]) -> int:
+    mass_table = {
+        "H": 1,
+        "C": 12,
+        "N": 14,
+        "O": 16,
+        "F": 19,
+        "P": 31,
+        "S": 32,
+        "Cl": 35,
+        "Br": 79,
+        "I": 127,
+    }
+    return sum(mass_table.get(element, 0) * n for element, n in counts.items())
+
+
+def parse_ion(product_ion: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(product_ion, str):
+        return None
+
+    m = ION_RE.search(product_ion)
+    if not m:
+        return None
+
+    formula = m.group(1)
+    mz = int(m.group(2))
+    counts = parse_formula_counts(formula)
+
+    return {
+        "formula": formula,
+        "mz": mz,
+        "counts": counts,
+        "carbon": counts.get("C", 0),
+        "hydrogen": counts.get("H", 0),
+        "nominal_mass": nominal_mass(counts),
+        "has_unknown": "?" in formula,
+    }
+
+
+def parse_precursor_mz(precursor: str) -> Optional[int]:
+    if not isinstance(precursor, str):
+        return None
+    m = re.match(r"precursor_mz:\s*(\d+)", precursor.strip())
+    return int(m.group(1)) if m else None
+
+
+def count_c_in_smiles(smiles_fragment: str) -> int:
+    if not isinstance(smiles_fragment, str):
+        return 0
+    return len(re.findall(r"C(?!l)", smiles_fragment))
+
+
+def is_balanced_fragment(fragment: str) -> bool:
+    balance = 0
+    for ch in fragment:
+        if ch == "(":
+            balance += 1
+        elif ch == ")":
+            balance -= 1
+            if balance < 0:
+                return False
+    return balance == 0
+
+
+def parse_smiles_fragment_precursor(precursor: str) -> Tuple[Optional[str], List[str]]:
+    if not isinstance(precursor, str) or not precursor.startswith("smiles_fragment:"):
+        return None, []
+
+    body = precursor.replace("smiles_fragment:", "", 1).strip()
+    parts = body.split("|")
+    best = parts[0].strip() if parts else None
+
+    alternatives: List[str] = []
+    if len(parts) > 1:
+        m = re.search(r"alternatives:\s*\[(.*?)\]", parts[1])
+        if m:
+            alternatives = [
+                x.strip().strip("'\"")
+                for x in m.group(1).split(",")
+                if x.strip()
+            ]
+
+    return best or None, alternatives
+
+
+def format_smiles_fragment_candidate(candidates: List[str]) -> str:
+    unique = list(dict.fromkeys([c for c in candidates if c]))
+    if not unique:
+        return "smiles_fragment: C"
+
+    best = unique[0]
+    alts = unique[1:4]
+    if alts:
+        return f"smiles_fragment: {best} | alternatives: [{', '.join(alts)}]"
+    return f"smiles_fragment: {best}"
+
+
+def enumerate_smiles_fragment_candidates(smiles: str, target_c: int, max_candidates: int = 8) -> List[str]:
+    if not isinstance(smiles, str) or target_c <= 0:
+        return []
+
+    candidates: List[str] = []
+
+    linear = "C" * target_c
+    if linear in smiles:
+        candidates.append(linear)
+
+    n = len(smiles)
+    for i in range(n):
+        for j in range(i + 1, n + 1):
+            sub = smiles[i:j]
+            if "C" not in sub:
+                continue
+            if count_c_in_smiles(sub) != target_c:
+                continue
+            if not sub.startswith("C"):
+                continue
+            if not (sub.endswith("C") or sub.endswith(")")):
+                continue
+            if not is_balanced_fragment(sub):
+                continue
+            if sub in smiles:
+                candidates.append(sub)
+
+    def sort_key(x: str) -> Tuple[int, int, str]:
+        has_branch = 1 if "(" in x or ")" in x else 0
+        return (-has_branch, len(x), x)
+
+    candidates = sorted(list(dict.fromkeys(candidates)), key=sort_key)
+    return candidates[:max_candidates]
+
+
+def get_structure_fragment_candidates(smiles: str, product_ion: str) -> List[str]:
+    ion = parse_ion(product_ion)
+    if ion is None:
+        return []
+
+    return enumerate_smiles_fragment_candidates(smiles, ion["carbon"])
+
+
+def find_previous_ions_by_mz(previous_verified_triplets: List[List[str]], mz: int) -> List[Dict[str, Any]]:
+    matched = []
+    for triplet in previous_verified_triplets:
+        if not isinstance(triplet, list) or len(triplet) != 3:
+            continue
+        ion = parse_ion(triplet[2])
+        if ion is not None and ion["mz"] == mz:
+            matched.append(ion)
+    return matched
+
+
+def get_same_carbon_higher_h_precursor_candidates(
+    previous_verified_triplets: List[List[str]],
+    product_ion: str,
+) -> List[Dict[str, Any]]:
+    product = parse_ion(product_ion)
+    if product is None:
+        return []
+
+    candidates = []
+    for triplet in previous_verified_triplets:
+        ion = parse_ion(triplet[2]) if isinstance(triplet, list) and len(triplet) == 3 else None
+        if ion is None:
+            continue
+        if ion["carbon"] == product["carbon"] and ion["hydrogen"] > product["hydrogen"]:
+            candidates.append({
+                "precursor_mz": ion["mz"],
+                "precursor_ion": triplet[2],
+                "source_triplet": triplet,
+                "carbon": ion["carbon"],
+                "hydrogen": ion["hydrogen"],
+            })
+
+    candidates.sort(key=lambda x: (x["precursor_mz"]))
+    return candidates
+
+
+def is_alkyl_like_ion(ion: Dict[str, Any]) -> bool:
+    c = ion.get("carbon", 0)
+    h = ion.get("hydrogen", 0)
+    return c > 0 and h >= 2 * c + 1
+
+
+def is_unsaturated_hydrocarbon_ion(ion: Dict[str, Any]) -> bool:
+    c = ion.get("carbon", 0)
+    h = ion.get("hydrogen", 0)
+    return c > 0 and h < 2 * c + 1
+
+
+def is_highly_unsaturated_hydrocarbon_ion(ion: Dict[str, Any]) -> bool:
+    """
     Target ions such as C2H3+, C3H5+, C3H3+, C4H7+, C5H9+.
     These should generally not be explained by plain Sigma-bond cleavage when
     a dehydrogenation-style explanation is available.
 
     We intentionally use H <= 2C - 1 rather than H < 2C + 1 so that even-electron
     ions such as C4H8+ are not automatically rewritten away from Sigma-bond cleavage.
+    """
+    c = ion.get("carbon", 0)
+    h = ion.get("hydrogen", 0)
+    return c > 0 and h <= 2 * c - 1
+
+
+def should_avoid_sigma_for_unsaturated_product(mechanism: str, product_ion: str) -> bool:
+    if mechanism != "Sigma-bond cleavage":
+        return False
+    product = parse_ion(product_ion)
+    if product is None:
+        return False
+    return is_highly_unsaturated_hydrocarbon_ion(product)
+
+
+def choose_dehydrogenation_precursor(
+    original_precursor: str,
+    previous_verified_triplets: List[List[str]],
+    product_ion: str,
+) -> Optional[int]:
+    """
     Choose a precursor_mz for same-carbon dehydrogenation.
 
     Priority:
@@ -457,6 +724,31 @@ Forbidden:
     2. Otherwise choose the nearest same-carbon higher-H precursor, rather than
        blindly choosing the highest-H precursor. This avoids over-revising valid
        stepwise dehydrogenation paths.
+    """
+    product = parse_ion(product_ion)
+    if product is None:
+        return None
+
+    original_mz = parse_precursor_mz(original_precursor)
+    if original_mz is not None:
+        previous_ions = find_previous_ions_by_mz(previous_verified_triplets, original_mz)
+        for ion in previous_ions:
+            if ion["carbon"] == product["carbon"] and ion["hydrogen"] > product["hydrogen"]:
+                return original_mz
+
+    candidates = get_same_carbon_higher_h_precursor_candidates(
+        previous_verified_triplets,
+        product_ion,
+    )
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: (x["hydrogen"] - product["hydrogen"], x["precursor_mz"]))
+    return candidates[0]["precursor_mz"]
+
+
+def is_reliable_for_precursor_context(triplet: List[str]) -> bool:
+    """
     Decide whether a corrected triplet is strong enough to be reused as
     precursor_mz evidence in later ion-evolution decisions.
 
@@ -466,31 +758,675 @@ Forbidden:
     - Dehydrogenation with precursor_mz can seed later dehydrogenation steps.
     - Dehydrogenation with only a smiles_fragment is kept in final output, but is
       not treated as strong precursor_mz evidence by default.
+    """
+    if not isinstance(triplet, list) or len(triplet) != 3:
+        return False
+
+    precursor, mechanism, product_ion = triplet
+
+    if mechanism == "Molecular ion":
+        return True
+
+    if mechanism == "Sigma-bond cleavage":
+        return isinstance(precursor, str) and precursor.startswith("smiles_fragment:")
+
+    if mechanism == "Dehydrogenation / Sequential dehydrogenation":
+        return parse_precursor_mz(precursor) is not None
+
+    return False
+
+
+def should_avoid_neutral_loss_for_hydrocarbon(
+    mechanism: str,
+    product_ion: str,
+    molecule_formula: str,
+) -> bool:
+    """
     For pure hydrocarbons, avoid using Neutral loss to explain simple hydrocarbon
     cation formation such as CH3+, C2H5+, or C3H7+.
+    """
+    if mechanism != "Neutral loss":
+        return False
+
+    product = parse_ion(product_ion)
+    mol_counts = parse_formula_counts(molecule_formula)
+    if product is None or not mol_counts:
+        return False
+
+    molecule_is_hydrocarbon = set(mol_counts.keys()).issubset({"C", "H"})
+    product_is_hydrocarbon = set(product["counts"].keys()).issubset({"C", "H"})
+    return molecule_is_hydrocarbon and product_is_hydrocarbon
+
+
+def restore_supported_original_dehydrogenation(
+    original_triplet: List[str],
+    final_triplet: List[str],
+    previous_reliable_precursor_triplets: List[List[str]],
+) -> List[str]:
+    """
     Prevent over-revision to a higher-hydrogen precursor.
 
     If the original triplet is already a valid same-carbon dehydrogenation step
     supported by reliable previous context, keep the original triplet even if the
     model or postprocessor changed it to a more saturated precursor.
+    """
+    original = normalize_triplet(original_triplet)
+    final = normalize_triplet(final_triplet)
+    if original is None or final is None:
+        return final_triplet
+
+    orig_precursor, orig_mechanism, orig_product = original
+    if orig_mechanism != "Dehydrogenation / Sequential dehydrogenation":
+        return final_triplet
+
+    orig_mz = parse_precursor_mz(orig_precursor)
+    product = parse_ion(orig_product)
+    if orig_mz is None or product is None:
+        return final_triplet
+
+    previous_ions = find_previous_ions_by_mz(previous_reliable_precursor_triplets, orig_mz)
+    original_is_supported = any(
+        ion["carbon"] == product["carbon"] and ion["hydrogen"] > product["hydrogen"]
+        for ion in previous_ions
+    )
+
+    if original_is_supported:
+        return original
+
+    return final_triplet
+
+
+def get_original_precursor_status(
+    triplet: List[str],
+    previous_reliable_precursor_triplets: List[List[str]],
+) -> Dict[str, Any]:
+    normalized = normalize_triplet(triplet)
+    if normalized is None:
+        return {"is_supported": False}
+
+    precursor, mechanism, product_ion = normalized
+    product = parse_ion(product_ion)
+    precursor_mz = parse_precursor_mz(precursor)
+
+    if product is None or precursor_mz is None:
+        return {
+            "is_supported": False,
+            "original_precursor_mz": precursor_mz,
+            "mechanism": mechanism,
+            "product_ion": product_ion,
+            "supporting_previous_ions": [],
+        }
+
+    previous_ions = find_previous_ions_by_mz(previous_reliable_precursor_triplets, precursor_mz)
+    supporting_previous_ions = [
+        ion for ion in previous_ions
+        if ion["carbon"] == product["carbon"] and ion["hydrogen"] > product["hydrogen"]
+    ]
+
+    return {
+        "is_supported": len(supporting_previous_ions) > 0,
+        "original_precursor_mz": precursor_mz,
+        "mechanism": mechanism,
+        "product_ion": product_ion,
+        "supporting_previous_ions": supporting_previous_ions,
+    }
+
+
+def is_context_safe_triplet(
+    triplet: List[str],
+    previous_verified_triplets: List[List[str]],
+    smiles: str,
+    molecule_formula: str,
+) -> Tuple[bool, List[str]]:
+    reasons: List[str] = []
+
+    if not isinstance(triplet, list) or len(triplet) != 3:
+        return False, ["Triplet is not a valid 3-element list."]
+
+    precursor, mechanism, product_ion = triplet
+    product = parse_ion(product_ion)
+
+    if product is None:
+        return False, ["Cannot parse product ion formula/mz."]
+
+    if not product.get("has_unknown") and product["nominal_mass"] != product["mz"]:
+        reasons.append(
+            f"Product ion formula/mz mismatch: formula={product['formula']}, "
+            f"nominal_mass={product['nominal_mass']}, mz={product['mz']}."
+        )
+
+    mol_counts = parse_formula_counts(molecule_formula)
+    mol_c = mol_counts.get("C", 0)
+    if mol_c > 0 and product["carbon"] > mol_c:
+        reasons.append(
+            f"Product ion carbon number C{product['carbon']} exceeds molecule carbon number C{mol_c}."
+        )
+
+    if should_avoid_sigma_for_unsaturated_product(mechanism, product_ion):
+        reasons.append(
+            "Plain Sigma-bond cleavage is not safe as context for a highly unsaturated "
+            "hydrocarbon ion; prefer same-carbon dehydrogenation when available."
+        )
+
+    precursor_mz = parse_precursor_mz(precursor)
+
+    if isinstance(precursor, str) and precursor.startswith("smiles_fragment:"):
+        best_fragment, alternatives = parse_smiles_fragment_precursor(precursor)
+        all_fragments = [best_fragment] + alternatives
+        valid_fragments = [frag for frag in all_fragments if frag and frag in smiles]
+
+        if not valid_fragments:
+            reasons.append(f"No smiles_fragment candidate is a substring of source SMILES '{smiles}'.")
+        else:
+            if best_fragment not in valid_fragments:
+                reasons.append(
+                    f"Best smiles_fragment '{best_fragment}' is invalid, although valid alternatives exist: {valid_fragments}."
+                )
+
+            if best_fragment:
+                frag_c = count_c_in_smiles(best_fragment)
+                prod_c = product["carbon"]
+
+                if prod_c > 0 and frag_c < prod_c:
+                    reasons.append(
+                        f"Best smiles_fragment carbon number C{frag_c} is smaller than product ion carbon number C{prod_c}."
+                    )
+
+                if mechanism == "Sigma-bond cleavage" and prod_c > 0 and frag_c != prod_c:
+                    reasons.append(
+                        f"For Sigma-bond cleavage, best smiles_fragment carbon number C{frag_c} should match product ion carbon number C{prod_c} for safe context use."
+                    )
+
+    if precursor_mz is not None:
+        previous_ions = find_previous_ions_by_mz(previous_verified_triplets, precursor_mz)
+
+        if not previous_ions:
+            reasons.append(f"precursor_mz:{precursor_mz} is not supported by previous verified corrected triplets.")
+
+        if mechanism == "Dehydrogenation / Sequential dehydrogenation" and previous_ions:
+            same_carbon_higher_h_exists = any(
+                prev_ion["carbon"] == product["carbon"]
+                and prev_ion["hydrogen"] > product["hydrogen"]
+                for prev_ion in previous_ions
+            )
+            if not same_carbon_higher_h_exists:
+                reasons.append(
+                    "Invalid dehydrogenation: precursor and product do not preserve carbon number "
+                    "or precursor does not have a higher hydrogen count."
+                )
+
+        if mechanism == "Sigma-bond cleavage":
+            reasons.append(
+                "Sigma-bond cleavage with precursor_mz is not safe as sequential context; "
+                "prefer structure-driven smiles_fragment for Sigma-bond cleavage."
+            )
+
+    return len(reasons) == 0, reasons
+
+
+def sanitize_triplet(
+    triplet: List[str],
+    record: Dict[str, Any],
+    previous_verified_triplets: List[List[str]],
+) -> List[str]:
+    """
     Lightweight deterministic cleanup:
     - If Sigma-bond cleavage uses an invalid/mismatched smiles_fragment, replace it
       with a valid exact-carbon fragment candidate.
     - If dehydrogenation uses an unsupported precursor_mz but a same-carbon higher-H
       previous precursor exists, replace the precursor_mz.
+    """
+    precursor, mechanism, product_ion = triplet
+    smiles = record.get("smiles", "")
+    product = parse_ion(product_ion)
+
+    if product is None:
+        return triplet
+
+    if should_avoid_neutral_loss_for_hydrocarbon(
+        mechanism=mechanism,
+        product_ion=product_ion,
+        molecule_formula=record.get("formula", ""),
+    ):
+        if is_alkyl_like_ion(product):
+            return [precursor, "Sigma-bond cleavage", product_ion]
+        return [precursor, "Dehydrogenation / Sequential dehydrogenation", product_ion]
+
+    if should_avoid_sigma_for_unsaturated_product(mechanism, product_ion):
+        chosen_mz = choose_dehydrogenation_precursor(
+            original_precursor=precursor,
+            previous_verified_triplets=previous_verified_triplets,
+            product_ion=product_ion,
+        )
+        if chosen_mz is not None:
+            return [
+                f"precursor_mz: {chosen_mz}",
+                "Dehydrogenation / Sequential dehydrogenation",
+                product_ion,
+            ]
+
+        if isinstance(precursor, str) and precursor.startswith("smiles_fragment:"):
+            return [
+                precursor,
+                "Dehydrogenation / Sequential dehydrogenation",
+                product_ion,
+            ]
+
+        candidates = get_structure_fragment_candidates(smiles, product_ion)
+        if candidates:
+            return [
+                format_smiles_fragment_candidate(candidates),
+                "Dehydrogenation / Sequential dehydrogenation",
+                product_ion,
+            ]
+
+    if isinstance(precursor, str) and precursor.startswith("smiles_fragment:"):
+        candidates = get_structure_fragment_candidates(smiles, product_ion)
+        best_fragment, _ = parse_smiles_fragment_precursor(precursor)
+        best_c = count_c_in_smiles(best_fragment) if best_fragment else 0
+
+        if candidates and (
+            best_fragment not in smiles
+            or best_c < product["carbon"]
+            or (mechanism == "Sigma-bond cleavage" and best_c != product["carbon"])
+        ):
+            return [format_smiles_fragment_candidate(candidates), mechanism, product_ion]
+
+    if mechanism == "Dehydrogenation / Sequential dehydrogenation":
+        precursor_mz = parse_precursor_mz(precursor)
+        prev_ions = find_previous_ions_by_mz(previous_verified_triplets, precursor_mz) if precursor_mz else []
+
+        supported = any(
+            ion["carbon"] == product["carbon"] and ion["hydrogen"] > product["hydrogen"]
+            for ion in prev_ions
+        )
+        if not supported:
+            chosen_mz = choose_dehydrogenation_precursor(
+                original_precursor=precursor,
+                previous_verified_triplets=previous_verified_triplets,
+                product_ion=product_ion,
+            )
+            if chosen_mz is not None:
+                return [
+                    f"precursor_mz: {chosen_mz}",
+                    "Dehydrogenation / Sequential dehydrogenation",
+                    product_ion,
+                ]
+
+    return triplet
+
+
+def fallback_corrected_triplet(
+    record: Dict[str, Any],
+    original_triplet: List[str],
+    previous_verified_triplets: List[List[str]],
+) -> List[str]:
+    """
     Deterministic no-delete fallback. It always returns a non-empty 3-element triplet
     preserving the original product ion.
+    """
+    smiles = record.get("smiles", "")
+    formula = record.get("formula", "")
+    product_ion = original_triplet[2]
+    product = parse_ion(product_ion)
+
+    if product is None:
+        return [f"smiles_fragment: {smiles}", "Sigma-bond cleavage", product_ion]
+
+    mol_counts = parse_formula_counts(formula)
+    if mol_counts and product["counts"] == mol_counts:
+        return [f"smiles_fragment: {smiles}", "Molecular ion", product_ion]
+
+    chosen_mz = choose_dehydrogenation_precursor(
+        original_precursor=original_triplet[0],
+        previous_verified_triplets=previous_verified_triplets,
+        product_ion=product_ion,
+    )
+    if chosen_mz is not None:
+        return [
+            f"precursor_mz: {chosen_mz}",
+            "Dehydrogenation / Sequential dehydrogenation",
+            product_ion,
+        ]
+
+    frag_cands = get_structure_fragment_candidates(smiles, product_ion)
+    if frag_cands:
+        precursor = format_smiles_fragment_candidate(frag_cands)
+        if is_alkyl_like_ion(product):
+            mechanism = "Sigma-bond cleavage"
+        elif is_unsaturated_hydrocarbon_ion(product):
+            mechanism = "Dehydrogenation / Sequential dehydrogenation"
+        else:
+            mechanism = "Sigma-bond cleavage"
+        return [precursor, mechanism, product_ion]
+
+    mechanism = "Sigma-bond cleavage"
+    if is_unsaturated_hydrocarbon_ion(product):
+        mechanism = "Dehydrogenation / Sequential dehydrogenation"
+
+    return [f"smiles_fragment: {smiles}", mechanism, product_ion]
+
+
+def make_fallback_judge_output(
+    record: Dict[str, Any],
+    original_triplet: List[str],
+    previous_verified_triplets: List[List[str]],
+    reason_prefix: str,
+) -> Dict[str, Any]:
+    corrected = fallback_corrected_triplet(record, original_triplet, previous_verified_triplets)
+    corrected = sanitize_triplet(corrected, record, previous_verified_triplets)
+
+    return {
+        "id": record.get("id", None),
+        "name": record.get("name", ""),
+        "smiles": record.get("smiles", ""),
+        "formula": record.get("formula", ""),
+        "mw": record.get("mw", ""),
+        "original_triplet": original_triplet,
+        "verdict": "revise",
+        "reason": (
+            f"{reason_prefix} A deterministic no-delete fallback was applied to preserve "
+            f"the target product ion and provide a chemically plausible precursor/mechanism."
+        ),
+        "corrected_triplet": corrected,
+        "overall_quality": "Automatically revised by no-delete fallback after invalid or forbidden judge output.",
+        "major_errors": ["Model output was invalid, empty, or used forbidden delete verdict."],
+        "recommended_strategy": "Use the fallback corrected_triplet and inspect chemical_warnings/context_safe for downstream filtering."
+    }
+
+
+def extract_json_from_text(text: str) -> Dict[str, Any]:
+    if text is None:
+        raise ValueError("Empty response content.")
+
+    raw = text.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"\s*```$", "", raw)
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidate = raw[start:end + 1]
+        return json.loads(candidate)
+
+    raise ValueError(f"Cannot parse JSON from response:\n{raw[:1000]}")
+
+
+def validate_judge_output(parsed: Dict[str, Any]) -> List[str]:
+    warnings: List[str] = []
+    required_keys = [
+        "id", "name", "smiles", "formula", "mw",
+        "original_triplet", "verdict", "reason", "corrected_triplet",
+        "overall_quality", "major_errors", "recommended_strategy",
+    ]
+
+    for key in required_keys:
+        if key not in parsed:
+            warnings.append(f"Missing key: {key}")
+
+    verdict = parsed.get("verdict")
+    if verdict not in ["accept", "revise"]:
+        warnings.append(f"Invalid or forbidden verdict: {verdict}")
+
+    if normalize_triplet(parsed.get("original_triplet")) is None:
+        warnings.append("original_triplet is not a valid 3-element list.")
+
+    if normalize_triplet(parsed.get("corrected_triplet")) is None:
+        warnings.append("corrected_triplet must be a non-empty valid 3-element list.")
+
+    if not isinstance(parsed.get("major_errors"), list):
+        warnings.append("major_errors is not a list.")
+
+    original = normalize_triplet(parsed.get("original_triplet"))
+    corrected = normalize_triplet(parsed.get("corrected_triplet"))
+    if original is not None and corrected is not None and original[2] != corrected[2]:
+        warnings.append("corrected_triplet changed the target product ion.")
+
+    return warnings
+
+
+def normalize_revise_without_change(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    """
     If the model says verdict=revise but corrected_triplet is identical to
     original_triplet, normalize the verdict to accept. This avoids inflated revise
     statistics without changing the final triplet.
+    """
+    if not isinstance(parsed, dict):
+        return parsed
+
+    original = normalize_triplet(parsed.get("original_triplet"))
+    corrected = normalize_triplet(parsed.get("corrected_triplet"))
+
+    if parsed.get("verdict") == "revise" and original is not None and corrected == original:
+        parsed["verdict"] = "accept"
+        reason = str(parsed.get("reason", "")).strip()
+        suffix = (
+            "The corrected_triplet is identical to the original_triplet, "
+            "so the verdict is normalized to accept."
+        )
+        parsed["reason"] = (reason + " " + suffix).strip()
+
+        major_errors = parsed.get("major_errors", [])
+        if isinstance(major_errors, list) and not major_errors:
+            parsed["overall_quality"] = parsed.get(
+                "overall_quality",
+                "Chemically reasonable; normalized to accept because no actual triplet change was made.",
+            )
+
+    return parsed
+
+
+def enforce_current_record_metadata(
+    parsed: Dict[str, Any],
+    record: Dict[str, Any],
+    original_triplet: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
     Force saved metadata to match the current input molecule.
 
     This prevents the model from accidentally returning a renumbered id such as 1, 2, 3...
     when the current molecule actually has an original dataset id such as 75, 76, ...
+    """
+    if not isinstance(parsed, dict):
+        return parsed
+
+    parsed["id"] = record.get("id", None)
+    parsed["name"] = record.get("name", "")
+    parsed["smiles"] = record.get("smiles", "")
+    parsed["formula"] = record.get("formula", "")
+    parsed["mw"] = record.get("mw", "")
+
+    if original_triplet is not None:
+        parsed["original_triplet"] = original_triplet
+
+    return parsed
+
+
+def has_hard_format_error(warnings: List[str]) -> bool:
+    hard_patterns = [
+        "Missing key",
+        "Invalid or forbidden verdict",
+        "corrected_triplet must be a non-empty valid 3-element list",
+        "original_triplet is not a valid 3-element list",
+        "corrected_triplet changed the target product ion",
+    ]
+    return any(any(pattern in warning for pattern in hard_patterns) for warning in warnings)
+
+
+def build_user_prompt(
+    record: Dict[str, Any],
+    triplet: List[str],
+    triplet_index: int,
+    previous_verified_corrected_triplets: List[List[str]],
+    previous_reliable_precursor_triplets: List[List[str]],
+) -> str:
+    product_ion = triplet[2]
+    payload = {
+        "id": record.get("id", None),
+        "name": record.get("name", ""),
+        "smiles": record.get("smiles", ""),
+        "formula": record.get("formula", ""),
+        "mw": record.get("mw", ""),
+        "triplet_index": triplet_index,
+        "original_triplet": triplet,
+
+        "all_original_triplets_for_this_molecule": record.get("triplets", []),
+        "previous_verified_corrected_triplets_for_this_molecule": previous_verified_corrected_triplets,
+        "previous_reliable_precursor_triplets_for_this_molecule": previous_reliable_precursor_triplets,
+        "original_precursor_status": get_original_precursor_status(
+            triplet,
+            previous_reliable_precursor_triplets,
+        ),
+
+        "same_carbon_higher_h_precursor_candidates": get_same_carbon_higher_h_precursor_candidates(
+            previous_reliable_precursor_triplets,
+            product_ion,
+        ),
+        "structure_fragment_candidates_for_product": get_structure_fragment_candidates(
+            record.get("smiles", ""),
+            product_ion,
+        ),
+    }
+
+    if "compound_class" in record:
+        payload["compound_class"] = record.get("compound_class")
+    if "spectrum" in record:
+        payload["spectrum"] = record.get("spectrum")
+    if "input_spectrum" in record:
+        payload["input_spectrum"] = record.get("input_spectrum")
+
+    return (
+        "Please judge the following existing EI-MS fragmentation triplet.\n"
+        "You must output only verdict='accept' or verdict='revise'. The verdict 'delete' is forbidden.\n"
+        "You must always provide a non-empty corrected_triplet.\n"
+        "If the original precursor/mechanism is wrong, revise it so that the same target product ion is generated.\n"
+        "Use same_carbon_higher_h_precursor_candidates for sequential dehydrogenation when possible, "
+        "but do not replace an already valid original precursor_mz merely because a higher-H precursor also exists.\n"
+        "Use structure_fragment_candidates_for_product for structure-driven Sigma-bond cleavage when possible.\n"
+        "For Dehydrogenation / Sequential dehydrogenation, precursor and product must preserve carbon number.\n"
+        "For highly unsaturated hydrocarbon ions such as C2H3+, C3H5+, C3H3+, C4H7+, and C5H9+, "
+        "avoid plain Sigma-bond cleavage when a dehydrogenation-style path is available.\n"
+        "For Sigma-bond cleavage, prefer a structure-driven smiles_fragment over precursor_mz.\n"
+        "Do not assume any future triplet has already been corrected.\n"
+        "Return strict JSON only according to the system prompt.\n\n"
+        "[Triplet judgment input]\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
+    )
+
+
+def call_api_once(
+    client: OpenAI,
+    model: str,
+    messages: List[Dict[str, str]],
+    temperature: float,
+    max_tokens: int,
+    use_json_mode: bool = False,
+) -> str:
+    """
     Official OpenAI API call using the Responses API.
 
     The command-line argument is still named max_tokens to keep all existing
     retry logic and commands unchanged; it is mapped to max_output_tokens here.
+    """
+    kwargs = {
+        "model": model,
+        "input": messages,
+        "temperature": temperature,
+        "max_output_tokens": max_tokens,
+    }
+
+    if use_json_mode:
+        kwargs["text"] = {"format": {"type": "json_object"}}
+
+    response = client.responses.create(**kwargs)
+
+    if hasattr(response, "output_text") and response.output_text:
+        return response.output_text
+
+    parts = []
+    for item in getattr(response, "output", []) or []:
+        for content in getattr(item, "content", []) or []:
+            text = getattr(content, "text", None)
+            if text:
+                parts.append(text)
+
+    if parts:
+        return "\n".join(parts)
+
+    return str(response)
+
+
+def call_api_with_token_retry(
+    client: OpenAI,
+    model: str,
+    messages: List[Dict[str, str]],
+    temperature: float,
+    use_json_mode: bool,
+) -> Tuple[Optional[Dict[str, Any]], str, Optional[str]]:
+    token_attempts = [2048, 4096, 8192]
+    raw_text = ""
+    last_error = None
+
+    for attempt, current_max_tokens in enumerate(token_attempts, start=1):
+        try:
+            print(f"[Token Attempt {attempt}/{len(token_attempts)}] max_tokens={current_max_tokens}")
+            raw_text = call_api_once(
+                client=client,
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=current_max_tokens,
+                use_json_mode=use_json_mode,
+            )
+            parsed = extract_json_from_text(raw_text)
+            return parsed, raw_text, None
+
+        except Exception as e:
+            last_error = str(e)
+            print(
+                f"[Token Attempt {attempt}/{len(token_attempts)}] "
+                f"API or JSON parsing failed with max_tokens={current_max_tokens}: {last_error}"
+            )
+
+            if use_json_mode and ("response_format" in last_error or "json" in last_error.lower()):
+                try:
+                    print(f"[Fallback without json mode] max_tokens={current_max_tokens}")
+                    raw_text = call_api_once(
+                        client=client,
+                        model=model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=current_max_tokens,
+                        use_json_mode=False,
+                    )
+                    parsed = extract_json_from_text(raw_text)
+                    return parsed, raw_text, None
+                except Exception as e2:
+                    last_error = str(e2)
+                    print(f"[Fallback without json mode failed] {last_error}")
+
+            if attempt < len(token_attempts):
+                time.sleep(3)
+
+    return None, raw_text, last_error
+
+
+def semantic_retry_if_needed(
+    client: OpenAI,
+    model: str,
+    messages: List[Dict[str, str]],
+    parsed: Optional[Dict[str, Any]],
+    raw_text: str,
+    temperature: float,
+    use_json_mode: bool,
+    max_retries: int,
+) -> Tuple[Optional[Dict[str, Any]], str, List[str], bool]:
+    """
     Retry when the model violates the no-delete / non-empty corrected_triplet schema.
     """
     if parsed is None:
@@ -547,7 +1483,6 @@ Forbidden:
     return current_parsed, current_raw, current_warnings, True
 
 
-
 def build_corrected_outputs(
     input_records: List[Dict[str, Any]],
     full_results: List[Dict[str, Any]],
@@ -586,24 +1521,22 @@ def build_corrected_outputs(
     return list(grouped.values())
 
 
-
 def filter_records(records: List[Dict[str, Any]], args: argparse.Namespace) -> List[Dict[str, Any]]:
     selected = []
     for record in records:
         rid = record.get("id", None)
-        if args.id_min is not None and isinstance(rid, int) and rid < args.id_min:
+        if ID_MIN is not None and isinstance(rid, int) and rid < ID_MIN:
             continue
-        if args.id_max is not None and isinstance(rid, int) and rid > args.id_max:
+        if ID_MAX is not None and isinstance(rid, int) and rid > ID_MAX:
             continue
         selected.append(record)
 
-    if args.limit is None:
-        return selected[args.start:]
-    return selected[args.start:args.start + args.limit]
+    if LIMIT is None:
+        return selected[START:]
+    return selected[START:START + LIMIT]
 
 
 def main() -> None:
-    args = parse_args()
 
     api_key = API_KEY
     if not api_key:
@@ -611,7 +1544,7 @@ def main() -> None:
 
     client = OpenAI(api_key=api_key)
 
-    records = load_json(args.input_file)
+    records = load_json(INPUT_FILE)
     if isinstance(records, dict):
         records = [records]
     if not isinstance(records, list):
@@ -623,9 +1556,9 @@ def main() -> None:
     processed_keys = set()
     existing_by_key: Dict[Tuple[Any, Any], Dict[str, Any]] = {}
 
-    if args.skip_existing and os.path.exists(args.output_file):
+    if SKIP_EXISTING and os.path.exists(OUTPUT_FILE):
         try:
-            full_results = load_json(args.output_file)
+            full_results = load_json(OUTPUT_FILE)
             for item in full_results:
                 key = (item.get("id"), item.get("triplet_index"))
                 processed_keys.add(key)
@@ -642,12 +1575,12 @@ def main() -> None:
     print("=" * 80)
     print(f"Total selected molecules: {len(selected_records)}")
     print(f"Total triplets to judge: {total_triplets}")
-    print(f"id_min={args.id_min}, id_max={args.id_max}, start={args.start}, limit={args.limit}")
+    print(f"id_min={ID_MIN}, id_max={ID_MAX}, start={START}, limit={LIMIT}")
     print(f"Model: {MODEL}")
     print("API: OpenAI official Responses API")
-    print(f"Full output file: {args.output_file}")
-    print(f"Corrected output file: {args.corrected_output_file}")
-    print(f"include_unsafe_in_corrected: {args.include_unsafe_in_corrected}")
+    print(f"Full output file: {OUTPUT_FILE}")
+    print(f"Corrected output file: {CORRECTED_OUTPUT_FILE}")
+    print(f"include_unsafe_in_corrected: {INCLUDE_UNSAFE_IN_CORRECTED}")
     print("=" * 80)
 
     judged_count = 0
@@ -717,7 +1650,7 @@ def main() -> None:
                 continue
 
             key = (data_id, triplet_index)
-            if args.skip_existing and key in processed_keys:
+            if SKIP_EXISTING and key in processed_keys:
                 print(f"[Skip existing] id={data_id}, triplet_index={triplet_index}")
                 existing_item = existing_by_key.get(key)
                 if existing_item:
@@ -753,7 +1686,7 @@ def main() -> None:
                 model=MODEL,
                 messages=messages,
                 temperature=TEMPERATURE,
-                use_json_mode=args.use_json_mode,
+                use_json_mode=USE_JSON_MODE,
             )
 
             model_judge_output_before_fallback = None
@@ -768,8 +1701,8 @@ def main() -> None:
                     parsed=parsed,
                     raw_text=raw_text,
                     temperature=TEMPERATURE,
-                    use_json_mode=args.use_json_mode,
-                    max_retries=args.semantic_retry,
+                    use_json_mode=USE_JSON_MODE,
+                    max_retries=SEMANTIC_RETRY,
                 )
                 if parsed is not None:
                     parsed = enforce_current_record_metadata(
@@ -906,32 +1839,32 @@ def main() -> None:
                 for w in chemical_warnings[:10]:
                     print(f"  [Chemical Warning] {w}")
 
-            if args.save_every > 0 and len(full_results) % args.save_every == 0:
-                save_json(full_results, args.output_file)
+            if SAVE_EVERY > 0 and len(full_results) % SAVE_EVERY == 0:
+                save_json(full_results, OUTPUT_FILE)
                 corrected_outputs = build_corrected_outputs(
                     input_records=selected_records,
                     full_results=full_results,
-                    include_unsafe_in_corrected=args.include_unsafe_in_corrected,
+                    include_unsafe_in_corrected=INCLUDE_UNSAFE_IN_CORRECTED,
                 )
-                save_json(corrected_outputs, args.corrected_output_file)
-                print(f"Intermediate full results saved to: {args.output_file}")
-                print(f"Intermediate corrected results saved to: {args.corrected_output_file}")
+                save_json(corrected_outputs, CORRECTED_OUTPUT_FILE)
+                print(f"Intermediate full results saved to: {OUTPUT_FILE}")
+                print(f"Intermediate corrected results saved to: {CORRECTED_OUTPUT_FILE}")
 
-            if args.sleep > 0:
-                time.sleep(args.sleep)
+            if SLEEP_SECONDS > 0:
+                time.sleep(SLEEP_SECONDS)
 
-    save_json(full_results, args.output_file)
+    save_json(full_results, OUTPUT_FILE)
     corrected_outputs = build_corrected_outputs(
         input_records=selected_records,
         full_results=full_results,
-        include_unsafe_in_corrected=args.include_unsafe_in_corrected,
+        include_unsafe_in_corrected=INCLUDE_UNSAFE_IN_CORRECTED,
     )
-    save_json(corrected_outputs, args.corrected_output_file)
+    save_json(corrected_outputs, CORRECTED_OUTPUT_FILE)
 
     print("=" * 80)
     print("All done.")
-    print(f"Saved full judge results: {args.output_file}")
-    print(f"Saved corrected triplets: {args.corrected_output_file}")
+    print(f"Saved full judge results: {OUTPUT_FILE}")
+    print(f"Saved corrected triplets: {CORRECTED_OUTPUT_FILE}")
 
 
 if __name__ == "__main__":
