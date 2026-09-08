@@ -1,1 +1,277 @@
-111
+[
+  {
+    "id": 1,
+    "name": "Methane",
+    "smiles": "C",
+    "formula": "CH4",
+    "mw": "16",
+    "compound_class": "acyclic_alkane",
+    "corrected_triplet": [
+      [
+        "smiles_fragment: C",
+        "Molecular ion",
+        "CH4+ (m/z 16)"
+      ],
+      [
+        "precursor_mz: 16",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "CH3+ (m/z 15)"
+      ],
+      [
+        "precursor_mz: 15",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "CH2+ (m/z 14)"
+      ],
+      [
+        "precursor_mz: 14",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "CH+ (m/z 13)"
+      ]
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Ethane",
+    "smiles": "CC",
+    "formula": "C2H6",
+    "mw": "30",
+    "compound_class": "acyclic_alkane",
+    "corrected_triplet": [
+      [
+        "smiles_fragment: CC",
+        "Molecular ion",
+        "C2H6+ (m/z 30)"
+      ],
+      [
+        "smiles_fragment: CC",
+        "Sigma-bond cleavage",
+        "C2H5+ (m/z 29)"
+      ],
+      [
+        "precursor_mz: 29",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H4+ (m/z 28)"
+      ],
+      [
+        "precursor_mz: 28",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H3+ (m/z 27)"
+      ],
+      [
+        "precursor_mz: 27",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H2+ (m/z 26)"
+      ]
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Propane",
+    "smiles": "CCC",
+    "formula": "C3H8",
+    "mw": "44",
+    "compound_class": "acyclic_alkane",
+    "corrected_triplet": [
+      [
+        "smiles_fragment: CCC",
+        "Molecular ion",
+        "C3H8+ (m/z 44)"
+      ],
+      [
+        "smiles_fragment: CCC",
+        "Sigma-bond cleavage",
+        "C3H7+ (m/z 43)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H6+ (m/z 42)"
+      ],
+      [
+        "precursor_mz: 42",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H5+ (m/z 41)"
+      ],
+      [
+        "precursor_mz: 41",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H3+ (m/z 39)"
+      ],
+      [
+        "smiles_fragment: CC",
+        "Sigma-bond cleavage",
+        "C2H5+ (m/z 29)"
+      ],
+      [
+        "precursor_mz: 29",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H4+ (m/z 28)"
+      ],
+      [
+        "precursor_mz: 28",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H3+ (m/z 27)"
+      ],
+      [
+        "smiles_fragment: C",
+        "Sigma-bond cleavage",
+        "CH3+ (m/z 15)"
+      ]
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Butane",
+    "smiles": "CCCC",
+    "formula": "C4H10",
+    "mw": "58",
+    "compound_class": "acyclic_alkane",
+    "corrected_triplet": [
+      [
+        "smiles_fragment: CCCC",
+        "Molecular ion",
+        "C4H10+ (m/z 58)"
+      ],
+      [
+        "smiles_fragment: CCC",
+        "Sigma-bond cleavage",
+        "C3H7+ (m/z 43)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H6+ (m/z 42)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H5+ (m/z 41)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H3+ (m/z 39)"
+      ],
+      [
+        "smiles_fragment: CC",
+        "Sigma-bond cleavage",
+        "C2H5+ (m/z 29)"
+      ],
+      [
+        "precursor_mz: 29",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H4+ (m/z 28)"
+      ],
+      [
+        "precursor_mz: 29",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H3+ (m/z 27)"
+      ],
+      [
+        "precursor_mz: 27",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H2+ (m/z 26)"
+      ]
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Isobutane",
+    "smiles": "CC(C)C",
+    "formula": "C4H10",
+    "mw": "58",
+    "compound_class": "acyclic_alkane",
+    "corrected_triplet": [
+      [
+        "smiles_fragment: C(C)C",
+        "Sigma-bond cleavage",
+        "C3H7+ (m/z 43)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H6+ (m/z 42)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H5+ (m/z 41)"
+      ],
+      [
+        "precursor_mz: 41",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H3+ (m/z 39)"
+      ],
+      [
+        "smiles_fragment: CC",
+        "Sigma-bond cleavage",
+        "C2H5+ (m/z 29)"
+      ],
+      [
+        "precursor_mz: 29",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H3+ (m/z 27)"
+      ],
+      [
+        "smiles_fragment: C",
+        "Sigma-bond cleavage",
+        "CH3+ (m/z 15)"
+      ]
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Pentane",
+    "smiles": "CCCCC",
+    "formula": "C5H12",
+    "mw": "72",
+    "compound_class": "acyclic_alkane",
+    "corrected_triplet": [
+      [
+        "smiles_fragment: CCCCC",
+        "Molecular ion",
+        "C5H12+• (m/z 72)"
+      ],
+      [
+        "smiles_fragment: CCCC",
+        "Sigma-bond cleavage",
+        "C4H9+ (m/z 57)"
+      ],
+      [
+        "precursor_mz: 57",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C4H7+ (m/z 55)"
+      ],
+      [
+        "smiles_fragment: CCC",
+        "Sigma-bond cleavage",
+        "C3H7+ (m/z 43)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H6+ (m/z 42)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H5+ (m/z 41)"
+      ],
+      [
+        "precursor_mz: 43",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C3H3+ (m/z 39)"
+      ],
+      [
+        "smiles_fragment: CC",
+        "Sigma-bond cleavage",
+        "C2H5+ (m/z 29)"
+      ],
+      [
+        "precursor_mz: 29",
+        "Dehydrogenation / Sequential dehydrogenation",
+        "C2H3+ (m/z 27)"
+      ]
+    ]
+  }
+]
