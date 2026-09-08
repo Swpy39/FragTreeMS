@@ -1,15 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from __future__ import annotations
 
-MODEL_NAME_OR_PATH = "xx"
+MODEL_NAME_OR_PATH = "/hpc2hdd/home/fye374/models/Qwen2.5-14B-Instruct"
 
-TRAIN_DATA_FILE = "xx"
-
-SELECTION_DATA_FILE = "xx"
-
-OUTPUT_DIR = "xx"
+TRAIN_DATA_FILE = "./data/aromatic_hydrocarbon/train.jsonl"
+OUTPUT_DIR = "./outputs/aromatic_hydrocarbon/Qwen25-14B_44_fitgraph"
 
 print(OUTPUT_DIR)
 
@@ -38,6 +32,7 @@ GRADIENT_CHECKPOINTING = True
 DATALOADER_NUM_WORKERS = 4
 DATALOADER_PREFETCH_FACTOR = 4
 LOG_EVERY_UPDATES = 5
+CHECKPOINT_EVERY_N_EPOCHS = 1
 
 BASE_TOKEN_WEIGHT = 1.0
 ION_RELATED_TOKEN_WEIGHT = 1.5
@@ -64,26 +59,12 @@ REPAIR_SAMPLE_RATIO = 0.25
 REPAIR_DROP_MIN = 0.10
 REPAIR_DROP_MAX = 0.30
 
-SELECTION_START_EPOCH = 30
-SELECTION_EVERY_N_EPOCHS = 30
-SELECT_FINAL_EPOCH = True
-
-SELECTION_BATCH_SIZE_PER_GPU = 4
-SELECTION_MAX_INPUT_LENGTH = 4096
-SELECTION_MAX_NEW_TOKENS = 8192
-STRONG_PEAK_THRESHOLD = 100.0
-
 ION_PROBABILITY_THRESHOLD = 0.20
 ION_COUNT_EXPANSION = 1.15
 ION_COUNT_MARGIN = 1
 MAX_AUXILIARY_ION_CANDIDATES = 64
-MAX_REPAIR_ROUNDS = 1
-
-SELECTION_F_BETA = 2.0
-
 
 RESUME_CHECKPOINT_DIR = None
-
 
 import json
 import math
@@ -94,7 +75,7 @@ import time
 from contextlib import nullcontext
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
@@ -113,23 +94,13 @@ from fitgraph_ion_recall_common_v2 import (
     build_fitgraph,
     build_repair_chat_prompt,
     corrupt_graph_for_repair,
-    evaluate_predictions,
     graph_to_dsl,
-    graph_to_triplets,
-    macro_ion_fbeta_similarity,
-    merge_graphs_no_delete,
-    output_graph_similarity,
-    parse_fitgraph_dsl,
     product_ion_mzs_from_graph,
     product_ion_mzs_from_record,
     read_jsonl,
-    serializable_record_key,
-    strict_inference_row,
     triplet_similarity_signatures_from_graph,
     write_jsonl,
 )
-
-
 
 def distributed_setup() -> Tuple[int, int, int, torch.device]:
     if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
@@ -221,7 +192,6 @@ def cosine_schedule(
     )
 
 
-
 def validate_record_schema(
     records: Sequence[Dict[str, Any]],
     path: Path,
@@ -256,56 +226,7 @@ def validate_record_schema(
         )
 
 
-def warn_train_selection_overlap(
-    train_records: Sequence[Dict[str, Any]],
-    selection_records: Sequence[Dict[str, Any]],
-    rank: int,
-) -> None:
-    if not is_rank0(rank):
-        return
-
-    def key(record: Dict[str, Any]) -> Tuple[str, str, str]:
-        return (
-            str(record.get("smiles", "")).strip(),
-            str(record.get("formula", "")).strip(),
-            str(record.get("mw", "")).strip(),
-        )
-
-    train_keys = {key(record) for record in train_records}
-    selection_keys = {key(record) for record in selection_records}
-    overlap = train_keys & selection_keys
-    print(
-        "[split-check] "
-        + json.dumps(
-            {
-                "train_records": len(train_records),
-                "selection_records": len(selection_records),
-                "exact_structure_overlap": len(overlap),
-                "selection_set_warning": (
-                    "This file is used for checkpoint selection and is not "
-                    "an unbiased final test set."
-                ),
-            },
-            ensure_ascii=False,
-        ),
-        flush=True,
-    )
-    if overlap:
-        print(
-            "[warning] train/selection overlap examples: "
-            + json.dumps(list(overlap)[:10], ensure_ascii=False),
-            flush=True,
-        )
-
-
 def build_target_character_weights(target: str) -> List[float]:
-    """
-    Use only two token weights:
-      - BASE_TOKEN_WEIGHT for ordinary graph text;
-      - ION_RELATED_TOKEN_WEIGHT for ions=<count>, ion m/z and ion formula.
-
-    IDs, formatting, ion type, fragments and edges remain at the base weight.
-    """
     weights = [BASE_TOKEN_WEIGHT] * len(target)
     section: Optional[str] = None
     cursor = 0
@@ -338,7 +259,6 @@ def build_target_character_weights(target: str) -> List[float]:
         ):
             section = None
         elif section == "ions" and stripped:
-            # I0<TAB>55<TAB>C4H7<TAB>fragment_ion
             positions: List[Tuple[int, int]] = []
             part_start = 0
             for part in stripped.split("\t"):
@@ -346,7 +266,6 @@ def build_target_character_weights(target: str) -> List[float]:
                 positions.append((part_start, part_end))
                 part_start = part_end + 1
 
-            # m/z column and formula column only.
             for column in (1, 2):
                 if column >= len(positions):
                     continue
@@ -723,10 +642,6 @@ class RecallGraphCollator:
         }
 
 
-# ===========================================================================
-# Model
-# ===========================================================================
-
 def masked_prompt_pool(
     hidden: torch.Tensor,
     labels: torch.Tensor,
@@ -811,33 +726,6 @@ class IonRecallGraphModel(nn.Module):
             "count_prediction": count_prediction,
             "similarity_repr": similarity_repr,
         }
-
-    def encode_prompt(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Prompt-only inference for auxiliary ion proposals.
-        """
-        outputs = self.lm(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            output_hidden_states=True,
-            use_cache=False,
-            return_dict=True,
-        )
-        hidden = outputs.hidden_states[-1]
-        mask = attention_mask.unsqueeze(-1).to(hidden.dtype)
-        pooled = (
-            (hidden * mask).sum(dim=1)
-            / mask.sum(dim=1).clamp_min(1.0)
-        ).float()
-        return (
-            self.ion_head(pooled),
-            F.softplus(self.count_head(pooled).squeeze(-1)),
-        )
-
 
 def load_model_and_tokenizer(
     device: torch.device,
@@ -929,18 +817,11 @@ def load_model_and_tokenizer(
     return model, tokenizer
 
 
-# ===========================================================================
-# Losses
-# ===========================================================================
-
 def graph_weighted_loss_per_molecule(
     logits: torch.Tensor,
     labels: torch.Tensor,
     loss_weights: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Normalize each molecule independently, then average molecules.
-    """
     shift_logits = logits[:, :-1, :].contiguous()
     shift_labels = labels[:, 1:].contiguous()
     shift_weights = loss_weights[:, 1:].contiguous().float()
@@ -1070,354 +951,6 @@ def similarity_lambda(epoch: int) -> float:
     return LAMBDA_SIMILARITY_MAX
 
 
-# ===========================================================================
-# Selection inference
-# ===========================================================================
-
-def clean_generation_config(language_model: nn.Module) -> None:
-    config = language_model.generation_config
-    config.do_sample = False
-    for name in ("temperature", "top_p", "top_k"):
-        if hasattr(config, name):
-            setattr(config, name, None)
-
-
-def generate_texts(
-    language_model: nn.Module,
-    tokenizer: Any,
-    prompts: Sequence[str],
-    device: torch.device,
-) -> List[str]:
-    encoded = tokenizer(
-        list(prompts),
-        add_special_tokens=False,
-        padding=True,
-        truncation=True,
-        max_length=SELECTION_MAX_INPUT_LENGTH,
-        pad_to_multiple_of=8,
-        return_tensors="pt",
-    )
-    encoded = {
-        key: value.to(device, non_blocking=True)
-        for key, value in encoded.items()
-    }
-
-    with torch.inference_mode():
-        generated = language_model.generate(
-            **encoded,
-            do_sample=False,
-            num_beams=1,
-            max_new_tokens=SELECTION_MAX_NEW_TOKENS,
-            use_cache=True,
-            eos_token_id=tokenizer.eos_token_id,
-            pad_token_id=tokenizer.pad_token_id,
-        )
-
-    prompt_width = encoded["input_ids"].shape[1]
-    return tokenizer.batch_decode(
-        generated[:, prompt_width:],
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False,
-    )
-
-
-def generate_with_oom_fallback(
-    language_model: nn.Module,
-    tokenizer: Any,
-    prompts: Sequence[str],
-    device: torch.device,
-) -> List[str]:
-    try:
-        return generate_texts(
-            language_model,
-            tokenizer,
-            prompts,
-            device,
-        )
-    except torch.cuda.OutOfMemoryError:
-        torch.cuda.empty_cache()
-        if len(prompts) <= 1:
-            raise
-        middle = len(prompts) // 2
-        return (
-            generate_with_oom_fallback(
-                language_model,
-                tokenizer,
-                prompts[:middle],
-                device,
-            )
-            + generate_with_oom_fallback(
-                language_model,
-                tokenizer,
-                prompts[middle:],
-                device,
-            )
-        )
-
-
-def predict_auxiliary_batch(
-    raw_model: IonRecallGraphModel,
-    tokenizer: Any,
-    prompts: Sequence[str],
-    device: torch.device,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    encoded = tokenizer(
-        list(prompts),
-        add_special_tokens=False,
-        padding=True,
-        truncation=True,
-        max_length=SELECTION_MAX_INPUT_LENGTH,
-        pad_to_multiple_of=8,
-        return_tensors="pt",
-    )
-    encoded = {
-        key: value.to(device, non_blocking=True)
-        for key, value in encoded.items()
-    }
-    with torch.inference_mode():
-        logits, count = raw_model.encode_prompt(
-            encoded["input_ids"],
-            encoded["attention_mask"],
-        )
-    return torch.sigmoid(logits.float()).cpu(), count.float().cpu()
-
-
-def select_auxiliary_candidates(
-    probabilities: torch.Tensor,
-    count_prediction: float,
-    record: Dict[str, Any],
-) -> List[int]:
-    try:
-        molecular_mw = int(round(float(record.get("mw", 0))))
-    except Exception:
-        molecular_mw = 0
-
-    valid_max = min(
-        ION_HEAD_MAX_MZ,
-        max(1, molecular_mw + ION_ISOTOPE_MARGIN),
-    )
-
-    scores = probabilities.clone()
-    scores[0] = -1.0
-    if valid_max < ION_HEAD_MAX_MZ:
-        scores[valid_max + 1 :] = -1.0
-
-    threshold_indices = {
-        int(index)
-        for index in torch.nonzero(
-            scores >= ION_PROBABILITY_THRESHOLD,
-            as_tuple=False,
-        ).flatten().tolist()
-        if int(index) > 0
-    }
-
-    top_k = (
-        int(math.ceil(max(1.0, count_prediction) * ION_COUNT_EXPANSION))
-        + ION_COUNT_MARGIN
-    )
-    top_k = min(
-        max(1, top_k),
-        valid_max,
-        MAX_AUXILIARY_ION_CANDIDATES,
-    )
-    top_indices = {
-        int(index)
-        for index in torch.topk(scores, k=top_k).indices.tolist()
-        if int(index) > 0 and float(scores[index]) >= 0.0
-    }
-
-    candidates = threshold_indices | top_indices
-    if len(candidates) > MAX_AUXILIARY_ION_CANDIDATES:
-        candidates = set(
-            sorted(
-                candidates,
-                key=lambda value: float(scores[value]),
-                reverse=True,
-            )[:MAX_AUXILIARY_ION_CANDIDATES]
-        )
-    return sorted(candidates, reverse=True)
-
-
-def predict_records_batch(
-    raw_model: IonRecallGraphModel,
-    tokenizer: Any,
-    records: Sequence[Dict[str, Any]],
-    device: torch.device,
-) -> List[Dict[str, Any]]:
-    prompts = [
-        build_chat_prompt(tokenizer, record)
-        for record in records
-    ]
-
-    probabilities, count_predictions = predict_auxiliary_batch(
-        raw_model,
-        tokenizer,
-        prompts,
-        device,
-    )
-    first_texts = generate_with_oom_fallback(
-        raw_model.lm,
-        tokenizer,
-        prompts,
-        device,
-    )
-
-    intermediate: List[Dict[str, Any]] = []
-    repair_prompts: List[str] = []
-    repair_positions: List[int] = []
-
-    for position, (record, text) in enumerate(
-        zip(records, first_texts)
-    ):
-        first_graph, first_ok, first_errors = parse_fitgraph_dsl(text)
-        auxiliary_candidates = select_auxiliary_candidates(
-            probabilities[position],
-            float(count_predictions[position]),
-            record,
-        )
-        first_product_mzs = product_ion_mzs_from_graph(first_graph)
-        missing = sorted(
-            set(auxiliary_candidates) - first_product_mzs,
-            reverse=True,
-        )
-
-        intermediate.append(
-            {
-                "record": record,
-                "first_graph": first_graph,
-                "first_parse_ok": first_ok,
-                "first_errors": first_errors,
-                "first_text": text,
-                "auxiliary_candidates": auxiliary_candidates,
-                "missing_before_repair": missing,
-                "count_prediction": float(count_predictions[position]),
-                "head_probabilities": probabilities[position],
-            }
-        )
-
-        if missing and MAX_REPAIR_ROUNDS > 0:
-            repair_positions.append(position)
-            repair_prompts.append(
-                build_repair_chat_prompt(
-                    tokenizer,
-                    record,
-                    first_graph,
-                    missing,
-                )
-            )
-
-    repair_texts: List[str] = []
-    if repair_prompts:
-        repair_texts = generate_with_oom_fallback(
-            raw_model.lm,
-            tokenizer,
-            repair_prompts,
-            device,
-        )
-
-    repair_by_position = {
-        position: text
-        for position, text in zip(repair_positions, repair_texts)
-    }
-
-    rows: List[Dict[str, Any]] = []
-    for position, item in enumerate(intermediate):
-        first_graph = item["first_graph"]
-        final_graph = first_graph
-        final_ok = bool(item["first_parse_ok"])
-        repair_text = repair_by_position.get(position, "")
-        repair_ok = False
-        repair_errors: List[str] = []
-
-        if repair_text:
-            repaired_graph, repair_ok, repair_errors = (
-                parse_fitgraph_dsl(repair_text)
-            )
-            if repair_ok:
-                final_graph = merge_graphs_no_delete(
-                    item["record"],
-                    first_graph,
-                    repaired_graph,
-                )
-                final_ok = final_ok or repair_ok
-
-        final_product_mzs = product_ion_mzs_from_graph(final_graph)
-        unresolved = sorted(
-            set(item["auxiliary_candidates"]) - final_product_mzs,
-            reverse=True,
-        )
-
-        rows.append(
-            {
-                "record": item["record"],
-                "first_graph": first_graph,
-                "predicted_graph": final_graph,
-                "parse_ok": final_ok,
-                "validation_errors": (
-                    list(item["first_errors"]) + list(repair_errors)
-                ),
-                "raw_generation": item["first_text"],
-                "repair_generation": repair_text,
-                "repair_parse_ok": repair_ok,
-                "auxiliary_candidates": item["auxiliary_candidates"],
-                "missing_before_repair": item["missing_before_repair"],
-                "unresolved_after_repair": unresolved,
-                "count_prediction": item["count_prediction"],
-            }
-        )
-
-    return rows
-
-
-def add_auxiliary_selection_metrics(
-    rows: Sequence[Dict[str, Any]],
-    metrics: Dict[str, Any],
-) -> None:
-    head_recalls: List[float] = []
-    first_recalls: List[float] = []
-    final_recalls: List[float] = []
-    first_similarity: List[float] = []
-    final_similarity: List[float] = []
-
-    for row in rows:
-        gold_graph = row["gold_graph"]
-        gold = product_ion_mzs_from_graph(gold_graph)
-        first = product_ion_mzs_from_graph(row["first_graph"])
-        final = product_ion_mzs_from_graph(row["predicted_graph"])
-        head = set(row.get("auxiliary_candidates", []))
-
-        head_recalls.append(len(head & gold) / max(1, len(gold)))
-        first_recalls.append(len(first & gold) / max(1, len(gold)))
-        final_recalls.append(len(final & gold) / max(1, len(gold)))
-        first_similarity.append(
-            output_graph_similarity(row["first_graph"], gold_graph)
-        )
-        final_similarity.append(
-            output_graph_similarity(row["predicted_graph"], gold_graph)
-        )
-
-    count = max(1, len(rows))
-    metrics["macro_auxiliary_head_product_ion_recall"] = (
-        sum(head_recalls) / count
-    )
-    metrics["macro_first_pass_product_ion_recall"] = (
-        sum(first_recalls) / count
-    )
-    metrics["macro_final_product_ion_recall"] = (
-        sum(final_recalls) / count
-    )
-    metrics["macro_repair_recall_gain"] = (
-        metrics["macro_final_product_ion_recall"]
-        - metrics["macro_first_pass_product_ion_recall"]
-    )
-    metrics["macro_first_pass_graph_similarity"] = (
-        sum(first_similarity) / count
-    )
-    metrics["macro_final_graph_similarity"] = (
-        sum(final_similarity) / count
-    )
-
-
 def save_recall_checkpoint(
     raw_model: IonRecallGraphModel,
     tokenizer: Any,
@@ -1456,7 +989,6 @@ def save_recall_checkpoint(
         "ion_count_margin": ION_COUNT_MARGIN,
         "max_auxiliary_ion_candidates": MAX_AUXILIARY_ION_CANDIDATES,
         "graph_format": "ion_first_fitgraph_v2",
-        "selection_f_beta": SELECTION_F_BETA,
         "metadata": metadata,
     }
     (directory / "model_config.json").write_text(
@@ -1465,180 +997,27 @@ def save_recall_checkpoint(
     )
 
 
-def run_selection(
-    model: nn.Module,
-    tokenizer: Any,
-    selection_records: Sequence[Dict[str, Any]],
-    epoch: int,
-    output_dir: Path,
-    rank: int,
-    world_size: int,
-    device: torch.device,
-) -> Optional[Dict[str, Any]]:
-    raw_model = unwrap_model(model)
-    raw_model.eval()
-    raw_model.lm.config.use_cache = True
-    tokenizer.padding_side = "left"
-    clean_generation_config(raw_model.lm)
-
-    local_indices = list(
-        range(rank, len(selection_records), world_size)
-    )
-    local_rows: List[Dict[str, Any]] = []
-
-    for start in range(
-        0,
-        len(local_indices),
-        SELECTION_BATCH_SIZE_PER_GPU,
-    ):
-        index_batch = local_indices[
-            start : start + SELECTION_BATCH_SIZE_PER_GPU
-        ]
-        record_batch = [
-            selection_records[index] for index in index_batch
-        ]
-        predicted = predict_records_batch(
-            raw_model,
-            tokenizer,
-            record_batch,
-            device,
-        )
-
-        for index, item in zip(index_batch, predicted):
-            record = selection_records[index]
-            local_rows.append(
-                {
-                    "index": index,
-                    "id": record.get("id"),
-                    "record": record,
-                    "gold_graph": build_fitgraph(record),
-                    **item,
-                    "infer_result": graph_to_triplets(
-                        item["predicted_graph"]
-                    ),
-                }
-            )
-
-        print(
-            f"[selection rank={rank}] "
-            f"processed={min(start + len(index_batch), len(local_indices))}/"
-            f"{len(local_indices)}",
-            flush=True,
-        )
-
-    epoch_dir = output_dir / "selection" / f"epoch_{epoch:03d}"
-    shard_dir = epoch_dir / "_shards"
-    shard_dir.mkdir(parents=True, exist_ok=True)
-    write_jsonl(
-        shard_dir / f"rank_{rank:03d}.jsonl",
-        local_rows,
-    )
-    barrier()
-
-    metrics: Optional[Dict[str, Any]] = None
-    if is_rank0(rank):
-        merged: List[Dict[str, Any]] = []
-        for shard_rank in range(world_size):
-            merged.extend(
-                read_jsonl(
-                    shard_dir / f"rank_{shard_rank:03d}.jsonl"
-                )
-            )
-        merged.sort(key=lambda row: int(row["index"]))
-        write_jsonl(epoch_dir / "predictions.jsonl", merged)
-
-        metrics = evaluate_predictions(
-            merged,
-            STRONG_PEAK_THRESHOLD,
-        )
-        metrics.update(
-            macro_ion_fbeta_similarity(
-                merged,
-                beta=SELECTION_F_BETA,
-            )
-        )
-        add_auxiliary_selection_metrics(merged, metrics)
-        metrics["epoch"] = epoch
-        metrics["selection_data_file"] = str(
-            Path(SELECTION_DATA_FILE).resolve()
-        )
-        metrics["selection_data_is_not_unbiased_test"] = True
-
-        metric_name = (
-            f"macro_product_ion_f{SELECTION_F_BETA:g}"
-        )
-        metrics["checkpoint_selection_metric"] = metric_name
-        metrics["checkpoint_selection_value"] = metrics[metric_name]
-
-        (epoch_dir / "metrics.json").write_text(
-            json.dumps(metrics, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-        save_recall_checkpoint(
-            raw_model,
-            tokenizer,
-            epoch_dir / "checkpoint",
-            metadata={
-                "epoch": epoch,
-                "selection_metrics": metrics,
-            },
-        )
-
-        history_path = output_dir / "selection_history.jsonl"
-        with history_path.open("a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(metrics, ensure_ascii=False) + "\n"
-            )
-
-        print(
-            "[selection] "
-            + json.dumps(metrics, ensure_ascii=False, indent=2),
-            flush=True,
-        )
-
-        shutil.rmtree(shard_dir, ignore_errors=True)
-
-    barrier()
-    raw_model.lm.config.use_cache = False
-    tokenizer.padding_side = "right"
-    raw_model.train()
-    return metrics
-
-
-# ===========================================================================
-# Main training
-# ===========================================================================
-
 def main() -> None:
     rank, world_size, local_rank, device = distributed_setup()
     configure_torch()
     set_all_seeds(RANDOM_SEED, rank)
 
     train_path = Path(TRAIN_DATA_FILE).resolve()
-    selection_path = Path(SELECTION_DATA_FILE).resolve()
     output_dir = Path(OUTPUT_DIR).resolve()
 
     if not train_path.is_file():
         raise FileNotFoundError(train_path)
-    if not selection_path.is_file():
-        raise FileNotFoundError(selection_path)
+    if CHECKPOINT_EVERY_N_EPOCHS < 1:
+        raise ValueError("CHECKPOINT_EVERY_N_EPOCHS must be at least 1")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     train_records = read_jsonl(train_path)
-    selection_records = read_jsonl(selection_path)
     validate_record_schema(train_records, train_path)
-    validate_record_schema(selection_records, selection_path)
-    warn_train_selection_overlap(
-        train_records,
-        selection_records,
-        rank,
-    )
 
     model, tokenizer = load_model_and_tokenizer(device)
 
-    examples, graphs, dropped = prepare_training_examples(
+    examples, _, dropped = prepare_training_examples(
         tokenizer,
         train_records,
         rank,
@@ -1792,8 +1171,6 @@ def main() -> None:
         warmup_updates,
     )
 
-    best_value = -1.0
-    best_recall = -1.0
     global_update = 0
 
     model.train()
@@ -1949,69 +1326,23 @@ def main() -> None:
                 flush=True,
             )
 
-        scheduled = (
-            epoch >= SELECTION_START_EPOCH
-            and (
-                (epoch - SELECTION_START_EPOCH)
-                % SELECTION_EVERY_N_EPOCHS
-                == 0
-            )
-        )
-        final = SELECT_FINAL_EPOCH and epoch == NUM_TRAIN_EPOCHS
-
-        if scheduled or final:
-            metrics = run_selection(
-                model,
-                tokenizer,
-                selection_records,
-                epoch,
-                output_dir,
-                rank,
-                world_size,
-                device,
-            )
-
-            if is_rank0(rank) and metrics is not None:
-                metric_name = (
-                    f"macro_product_ion_f{SELECTION_F_BETA:g}"
+        barrier()
+        if epoch % CHECKPOINT_EVERY_N_EPOCHS == 0:
+            if is_rank0(rank):
+                checkpoint_dir = output_dir / "checkpoints" / f"epoch_{epoch:03d}"
+                save_recall_checkpoint(
+                    unwrap_model(model),
+                    tokenizer,
+                    checkpoint_dir,
+                    metadata={
+                        "epoch": epoch,
+                        "global_updates": global_update,
+                    },
                 )
-                value = float(metrics[metric_name])
-                recall = float(
-                    metrics["macro_product_ion_recall"]
+                print(
+                    f"[checkpoint] epoch={epoch} path={checkpoint_dir}",
+                    flush=True,
                 )
-
-                improved = (
-                    value > best_value + 1e-12
-                    or (
-                        abs(value - best_value) <= 1e-12
-                        and recall > best_recall
-                    )
-                )
-                if improved:
-                    best_value = value
-                    best_recall = recall
-                    save_recall_checkpoint(
-                        unwrap_model(model),
-                        tokenizer,
-                        output_dir / "best_checkpoint",
-                        metadata={
-                            "epoch": epoch,
-                            "selection_metric": metric_name,
-                            "selection_value": value,
-                            "selection_recall": recall,
-                            "selection_metrics": metrics,
-                            "warning": (
-                                "SELECTION_DATA_FILE was used for checkpoint "
-                                "selection and is not an unbiased final test."
-                            ),
-                        },
-                    )
-                    print(
-                        f"[best] epoch={epoch} "
-                        f"{metric_name}={value:.6f} "
-                        f"product_ion_recall={recall:.6f}",
-                        flush=True,
-                    )
             barrier()
 
     barrier()
@@ -2030,16 +1361,10 @@ def main() -> None:
                 {
                     "epochs": NUM_TRAIN_EPOCHS,
                     "global_updates": global_update,
-                    "best_selection_fbeta": best_value,
-                    "best_selection_recall": best_recall,
-                    "best_checkpoint": str(
-                        output_dir / "best_checkpoint"
-                    ),
+                    "checkpoint_every_n_epochs": CHECKPOINT_EVERY_N_EPOCHS,
+                    "epoch_checkpoints": str(output_dir / "checkpoints"),
                     "final_checkpoint": str(
                         output_dir / "final_checkpoint"
-                    ),
-                    "selection_data_warning": (
-                        "The selection file is not an unbiased final test."
                     ),
                 },
                 ensure_ascii=False,
@@ -2048,8 +1373,7 @@ def main() -> None:
             encoding="utf-8",
         )
         print(
-            f"[done] best checkpoint: "
-            f"{output_dir / 'best_checkpoint'}",
+            f"[done] final checkpoint: {output_dir / 'final_checkpoint'}",
             flush=True,
         )
 
