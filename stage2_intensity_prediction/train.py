@@ -1,5 +1,69 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+RUN_CONFIG = {
+    "gold_train_file": "xx",
+    "stage1_train_file": "xx",
+    "output_dir": "xx",
+    "seed": 42,
+    "batch_size": 8,
+    "grad_accum": 1,
+    "num_workers": 12,
+    "prefetch_factor": 4,
+    "stage1_epochs": 350,
+    "stage1_lr": 5.0e-5,
+    "phase_b_gold_ratio": 0.08,
+    "warmup_ratio": 0.06,
+    "weight_decay": 1.0e-2,
+    "grad_clip": 1.0,
+    "ema_decay": 0.999,
+    "vocab_size": 65536,
+    "d_model": 1152,
+    "n_heads": 18,
+    "interaction_layers": 10,
+    "dropout": 0.08,
+    "max_peaks": 320,
+    "max_path_len": 128,
+    "max_words_per_token": 48,
+    "morgan_fp_dim": 4096,
+    "morgan_radius": 2,
+    "lambda_intensity": 0.05,
+    "lambda_spectral": 3.00,
+    "lambda_rank": 0.00,
+    "lambda_base": 0.00,
+    "lambda_strong": 0.00,
+    "ablate_intensity_loss": False,
+    "ablate_spectral_loss": False,
+    "ablate_ranking_loss": False,
+    "ablate_base_peak_loss": False,
+    "ablate_strong_peak_loss": False,
+    "ablate_global_context": False,
+    "ablate_path_attention": False,
+    "ablate_inter_peak_interaction": False,
+    "ablate_gold_guided_curriculum": False,
+    "smooth_l1_beta": 0.04,
+    "peak_weight_alpha": 2.0,
+    "base_peak_extra": 3.0,
+    "strong_peak_extra": 1.5,
+    "strong_peak_threshold": 0.30,
+    "strong_peak_gamma": 1.4,
+    "strong_peak_topk": 5,
+    "rank_min_gap": 0.015,
+    "rank_base_margin": 0.03,
+    "rank_gap_margin_scale": 0.22,
+    "base_label_smoothing": 0.01,
+    "peak_bucket_multiple": 32,
+    "path_bucket_multiple": 8,
+    "auto_batch_size": True,
+    "auto_batch_memory_fraction": 0.86,
+    "auto_batch_max": 64,
+    "auto_batch_step": 4,
+    "device": "cuda",
+    "amp": True,
+    "amp_dtype": "bf16",
+    "print_every": 25,
+    "compile_model": False,
+    "compile_mode": "reduce-overhead",
+}
 
 import argparse
 import bisect
@@ -14,7 +78,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -72,6 +136,7 @@ MECHANISM_LABELS = [
 
 MECH_TO_ID = {m: i + 1 for i, m in enumerate(MECHANISM_LABELS)}
 
+
 TYPE_PAD = 0
 TYPE_ROOT = 1
 TYPE_STRUCTURE_EDGE = 2
@@ -86,7 +151,6 @@ TYPE_TO_NAME = {
     TYPE_ORPHAN_EDGE: "ORPHAN_EDGE",
 }
 
-EVAL_ROUND_DIGITS = 6
 
 def set_seed(seed: int) -> None:
     random.seed(seed)
@@ -95,7 +159,6 @@ def set_seed(seed: int) -> None:
 
 
 def setup_cuda_high_throughput() -> None:
-    """Enable stable high-throughput settings for NVIDIA Ampere GPUs."""
     torch.autograd.set_detect_anomaly(False)
     if not torch.cuda.is_available():
         return
@@ -108,12 +171,14 @@ def setup_cuda_high_throughput() -> None:
     except Exception:
         pass
 
+
     try:
         torch.backends.cuda.enable_flash_sdp(True)
         torch.backends.cuda.enable_mem_efficient_sdp(True)
         torch.backends.cuda.enable_math_sdp(True)
     except Exception:
         pass
+
 
     try:
         import torch._dynamo as dynamo
@@ -186,7 +251,6 @@ def normalize_mz_value(x: Any) -> Optional[str]:
 
 
 def format_mz_key(mz: float) -> str:
-    """Match the m/z key formatting used by stage2_infer_New.py."""
     return str(int(mz)) if float(mz).is_integer() else str(mz)
 
 
@@ -220,13 +284,6 @@ def get_record_id(record: Dict[str, Any]) -> str:
 
 
 def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
-    """
-    Read Stage1 triplets from common infer-file fields.
-
-    The preferred field is ``triplets``. The fallbacks keep this trainer
-    compatible with repaired/unified inference JSONL files that may store the
-    same Stage1 result under another name.
-    """
     for key in (
         "triplets",
         "corrected_triplet",
@@ -239,12 +296,11 @@ def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
         if not isinstance(value, list):
             continue
 
-        # Direct list of triplets: [[source, mechanism, product], ...]
+
         if all(isinstance(item, list) and len(item) >= 3 for item in value):
             return value
 
-        # Some inference outputs wrap candidates one level deeper. Use the
-        # first non-empty candidate list rather than mixing candidate rounds.
+
         for candidate in value:
             if (
                 isinstance(candidate, list)
@@ -260,7 +316,6 @@ def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
 
 
 def extract_intensity_value(record: Dict[str, Any]) -> Any:
-    """Return an intensity/spectrum field without changing its scale."""
     for key in (
         "intensity",
         "intensities",
@@ -275,17 +330,6 @@ def extract_intensity_value(record: Dict[str, Any]) -> Any:
 
 
 def normalize_intensity_mapping(value: Any) -> Dict[str, float]:
-    """
-    Convert common spectrum representations to ``{mz: intensity}``.
-
-    Supported inputs:
-      * a mapping from m/z to intensity;
-      * a list of ``[mz, intensity]`` pairs;
-      * a list of dictionaries containing m/z and intensity keys.
-
-    Values are not renormalized here, preserving the original trainer's target
-    semantics. ``build_tree_paths`` still clips targets to [0, 1].
-    """
     result: Dict[str, float] = {}
 
     if isinstance(value, dict):
@@ -320,72 +364,12 @@ def normalize_intensity_mapping(value: Any) -> Dict[str, float]:
     return result
 
 
-def merge_infer_validation_records(
-    infer_records: List[Dict[str, Any]],
-    infer_gold_records: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """
-    Build validation records from the infer file only.
-
-    When ``--infer_val_gold_file`` is provided, only its target spectrum and
-    missing molecule metadata are merged by id. No record from either training
-    file participates in validation.
-    """
-    if not infer_gold_records:
-        merged: List[Dict[str, Any]] = []
-        for record in infer_records:
-            row = dict(record)
-            row["triplets"] = extract_triplet_list(row)
-            row["intensity"] = normalize_intensity_mapping(
-                extract_intensity_value(row)
-            )
-            merged.append(row)
-        return merged
-
-    gold_by_id = {
-        get_record_id(record): record
-        for record in infer_gold_records
-        if get_record_id(record)
-    }
-
-    merged = []
-    unmatched = 0
-    for record in infer_records:
-        row = dict(record)
-        rid = get_record_id(row)
-        gold = gold_by_id.get(rid)
-        if gold is None:
-            unmatched += 1
-        else:
-            row["intensity"] = normalize_intensity_mapping(
-                extract_intensity_value(gold)
-            )
-            for key in ("name", "smiles", "SMILES", "formula", "Formula", "mw", "MW"):
-                if row.get(key) in (None, "") and gold.get(key) not in (None, ""):
-                    row[key] = gold[key]
-
-        row["triplets"] = extract_triplet_list(row)
-        if "intensity" not in row:
-            row["intensity"] = normalize_intensity_mapping(
-                extract_intensity_value(row)
-            )
-        merged.append(row)
-
-    if unmatched:
-        print(
-            f"[WARN] infer validation records without matching infer gold id: "
-            f"{unmatched}/{len(infer_records)}"
-        )
-    return merged
-
-
 def smiles_to_morgan_fingerprint(
     smiles: Any,
     *,
     radius: int = 2,
     n_bits: int = 2048,
 ) -> List[float]:
-    """Return a fixed-size Morgan bit fingerprint for global structure context."""
     text = str(smiles or "").strip()
     if not text:
         return [0.0] * int(n_bits)
@@ -410,7 +394,6 @@ def normalize_prediction_by_base_peak(
     peak_mask: torch.Tensor,
     eps: float = 1e-6,
 ) -> torch.Tensor:
-    """Normalize each predicted spectrum so its strongest valid peak is 1."""
     masked = prediction * peak_mask.float()
     maximum = masked.max(dim=1, keepdim=True).values.clamp_min(eps)
     return (masked / maximum) * peak_mask.float()
@@ -440,10 +423,6 @@ def _formula_tokens(formula: Any) -> List[str]:
 
 
 def structured_text_tokens(text: Any) -> List[str]:
-    """
-    Tokenize known Stage2 fields with a SMILES-aware path while preserving the
-    original fixed-size hash vocabulary. No explicit vocabulary is built.
-    """
     raw = str(text or "").strip()
     if not raw:
         return ["special::<empty>"]
@@ -499,10 +478,6 @@ def text_to_ids(text: str, vocab_size: int, max_words: int) -> List[int]:
     return ids
 
 
-# ============================================================
-# 2. Fragmentation tree representation
-# ============================================================
-
 @dataclass
 class PathToken:
     text: str
@@ -540,8 +515,8 @@ class PeakPathExample:
     true_base_mz: Optional[str]
     morgan_fp: List[float]
     source_type: str
-    # Built exactly once during Dataset construction. The DataLoader no longer
-    # performs regex tokenization, hashing, or Python text processing per epoch.
+
+
     tensor_cache: Optional[Dict[str, torch.Tensor]] = field(
         default=None,
         repr=False,
@@ -613,12 +588,6 @@ def build_tree_paths(
     morgan_radius: int,
     morgan_fp_dim: int,
 ) -> Optional[PeakPathExample]:
-    """
-    Build one unique ROOT-to-peak path per Stage1 candidate peak.
-
-    The path now carries explicit parent m/z and product m/z values. Neutral
-    loss is derived by the model as parent_mz - product_mz.
-    """
     raw_triplets = extract_triplet_list(record)
     if not isinstance(raw_triplets, list):
         return None
@@ -707,8 +676,8 @@ def build_tree_paths(
     intensity = normalize_intensity_mapping(
         extract_intensity_value(record)
     )
-    # stage2_infer_New.py clips every gold intensity to [0, 1] before
-    # computing mean_cosine_union_peaks. Keep the exact same semantics here.
+
+
     full_gold_intensity = {
         str(mz_key): max(0.0, min(1.0, parse_float(value, 0.0)))
         for mz_key, value in intensity.items()
@@ -774,10 +743,6 @@ def build_tree_paths(
     )
 
 
-# ============================================================
-# 3. Dataset and collator
-# ============================================================
-
 def _round_up(value: int, multiple: int, maximum: int) -> int:
     value = max(1, min(int(value), int(maximum)))
     multiple = max(1, int(multiple))
@@ -788,7 +753,6 @@ def tensorize_example_once(
     example: PeakPathExample,
     args: argparse.Namespace,
 ) -> None:
-    """Convert one molecule to reusable CPU tensors exactly once."""
     n_peaks = min(args.max_peaks, len(example.mz_values))
     max_path = min(
         args.max_path_len,
@@ -979,7 +943,6 @@ def resolve_dataset_example(dataset: Dataset, index: int) -> PeakPathExample:
 
 
 class BucketBatchSampler(Sampler[List[int]]):
-    """Shape-aware sampler producing a small, stable set of compiled graphs."""
     def __init__(
         self,
         dataset: Dataset,
@@ -1001,9 +964,8 @@ class BucketBatchSampler(Sampler[List[int]]):
         self.epoch = 0
 
     def __len__(self) -> int:
-        # Exact for ordinary loaders. For weighted replay, estimate expected
-        # samples per bucket from the sampling probabilities so the LR
-        # scheduler remains close to the actual number of optimizer steps.
+
+
         bucket_mass: Dict[Tuple[int, int], float] = defaultdict(float)
         if self.sample_weights is None:
             for index in range(len(self.dataset)):
@@ -1056,9 +1018,7 @@ class BucketBatchSampler(Sampler[List[int]]):
                 batches.append(bucket_indices[begin: begin + self.batch_size])
             remainders.extend(bucket_indices[full_count:])
 
-        # Pack the small tail of neighbouring buckets together. This avoids
-        # dozens of under-filled GPU steps when the dataset has many shapes;
-        # the collator simply pads each mixed tail batch to its largest bucket.
+
         if not self.drop_last and remainders:
             remainders.sort(
                 key=lambda index: resolve_dataset_example(
@@ -1075,7 +1035,6 @@ class BucketBatchSampler(Sampler[List[int]]):
 
 
 class Stage2Collator:
-    """Fast collator: tensor copy/padding only; no tokenization or hashing."""
     def __init__(self, args: argparse.Namespace) -> None:
         self.max_peaks = args.max_peaks
         self.max_path_len = args.max_path_len
@@ -1175,10 +1134,6 @@ class Stage2Collator:
         }
 
 
-# ============================================================
-# 4. Model
-# ============================================================
-
 class StructuredTreePathAttentionModel(nn.Module):
     PATH_NUMERIC_DIM = 9
 
@@ -1208,13 +1163,7 @@ class StructuredTreePathAttentionModel(nn.Module):
         self.max_path_len = max_path_len
         self.morgan_fp_dim = int(morgan_fp_dim)
 
-        # Ablation switches.
-        #
-        # IMPORTANT:
-        # All defaults are True, so running this script without any ablation
-        # flags follows the exact same model path as the original full model.
-        # The switches only change the forward path when explicitly enabled
-        # through the corresponding CLI ablation flags.
+
         self.use_global_context = bool(use_global_context)
         self.use_path_attention = bool(use_path_attention)
         self.use_inter_peak_interaction = bool(use_inter_peak_interaction)
@@ -1405,13 +1354,7 @@ class StructuredTreePathAttentionModel(nn.Module):
             self.peak_mz_features(mz, mw_for_peak)
         )
 
-        # ------------------------------------------------------------
-        # Global molecular context.
-        #
-        # Full model (default): unchanged from the original implementation.
-        # Ablation: skip Morgan-fingerprint encoding and the local-global
-        # gated fusion completely.
-        # ------------------------------------------------------------
+
         if self.use_global_context:
             global_embedding = self.global_mol_encoder(morgan_fp.float())
             global_expand = global_embedding.unsqueeze(1).expand(-1, max_p, -1)
@@ -1429,8 +1372,7 @@ class StructuredTreePathAttentionModel(nn.Module):
         flat_path_mask = path_mask.reshape(bsz * max_p, max_l)
         flat_peak_mask = peak_mask.reshape(bsz * max_p)
 
-        # Dense, compile-friendly path attention. Invalid rows receive one
-        # temporary zero key and are masked back to zero after attention.
+
         valid = flat_peak_mask & flat_path_mask.any(dim=-1)
         valid_f = valid.to(flat_path.dtype).view(-1, 1, 1)
         safe_flat_path = flat_path * valid_f
@@ -1438,14 +1380,8 @@ class StructuredTreePathAttentionModel(nn.Module):
         safe_flat_path_mask = torch.cat(
             [safe_first_column, flat_path_mask[:, 1:]], dim=1
         )
-        # ------------------------------------------------------------
-        # ROOT-to-peak path aggregation.
-        #
-        # Full model (default): original multi-head path attention.
-        # Ablation: masked mean pooling over the same path tokens, so the
-        # input information and downstream network remain unchanged while
-        # only the learnable attention operation is removed.
-        # ------------------------------------------------------------
+
+
         if self.use_path_attention:
             attended, _ = self.path_attn(
                 query=flat_query,
@@ -1468,24 +1404,10 @@ class StructuredTreePathAttentionModel(nn.Module):
         )
         peak_representation = path_representation.reshape(bsz, max_p, self.d_model)
 
-        # ------------------------------------------------------------
-        # Inter-peak interaction.
-        #
-        # Full model (default): exactly the original global molecule token +
-        # Transformer interaction + context fusion.
-        #
-        # w/o Global molecular context:
-        #   the Transformer still models interactions among candidate peaks,
-        #   but no Morgan-derived molecule token or molecule-context fusion
-        #   is used.
-        #
-        # w/o Inter-peak interaction:
-        #   every candidate peak is sent directly to the output head after
-        #   its local path representation is constructed.
-        # ------------------------------------------------------------
+
         if self.use_inter_peak_interaction:
             if self.use_global_context:
-                # Original full-model path.
+
                 molecule_token = self.global_token_proj(global_embedding).unsqueeze(1)
                 interaction_input = torch.cat(
                     [molecule_token, peak_representation],
@@ -1516,14 +1438,14 @@ class StructuredTreePathAttentionModel(nn.Module):
                     interacted + context_gate * context_expand
                 )
             else:
-                # Keep peak-to-peak Transformer interaction while removing
-                # all global molecular context.
+
+
                 interacted = self.tree_interaction(
                     peak_representation,
                     src_key_padding_mask=~peak_mask,
                 )
         else:
-            # Independent candidate-peak prediction after local path encoding.
+
             interacted = peak_representation
 
         output_logits = self.output_head(interacted).squeeze(-1)
@@ -1533,10 +1455,6 @@ class StructuredTreePathAttentionModel(nn.Module):
             return prediction, ranking_logits
         return prediction
 
-
-# ============================================================
-# 5. Losses
-# ============================================================
 
 def build_true_base_mask(
     base_index: torch.Tensor,
@@ -1563,7 +1481,6 @@ def masked_weighted_smooth_l1(
     strong_peak_threshold: float = 0.30,
     strong_peak_gamma: float = 1.4,
 ) -> torch.Tensor:
-    """Low-weight continuous intensity regression over every candidate."""
     mask_f = mask.float()
     true_base_mask = build_true_base_mask(base_index, base_present, mask)
     strong_mask = (target >= strong_peak_threshold) & mask
@@ -1589,7 +1506,6 @@ def strong_peak_regression_loss(
     top_k: int = 5,
     beta: float = 0.04,
 ) -> torch.Tensor:
-    """Vectorized strong/top-k regression without Python-GPU synchronization."""
     peak_count = target.size(1)
     k = max(1, min(int(top_k), peak_count))
     masked_target = target.masked_fill(~mask, -1.0e4)
@@ -1646,7 +1562,6 @@ def tree_ranking_loss(
     base_margin: float = 0.03,
     gap_margin_scale: float = 0.20,
 ) -> torch.Tensor:
-    """Fully vectorized pairwise ranking over all candidate intensities."""
     y_diff = target.unsqueeze(2) - target.unsqueeze(1)
     p_diff = pred.unsqueeze(2) - pred.unsqueeze(1)
     pair_valid = mask.unsqueeze(2) & mask.unsqueeze(1)
@@ -1657,7 +1572,6 @@ def tree_ranking_loss(
     per_molecule = (pair_loss * pair_mask_f).sum(dim=(1, 2)) / pair_mask_f.sum(dim=(1, 2)).clamp_min(1.0)
     valid = pair_mask.any(dim=(1, 2)).float()
     return (per_molecule * valid).sum() / valid.sum().clamp_min(1.0)
-
 
 
 def base_peak_classification_loss(
@@ -1673,9 +1587,8 @@ def base_peak_classification_loss(
     log_probability = F.log_softmax(selected_logits, dim=1)
     nll = -log_probability.gather(1, safe_target.unsqueeze(1)).squeeze(1)
     candidate_count = peak_mask.sum(dim=1).float().clamp_min(1.0)
-    # Smooth only across valid candidates. PyTorch's built-in label_smoothing
-    # would also allocate probability mass to masked padding classes whose
-    # logits are -1e4, producing an artificially enormous loss.
+
+
     smooth = -(log_probability * peak_mask.float()).sum(dim=1) / candidate_count
     smoothing = float(max(0.0, min(1.0, label_smoothing)))
     per_sample = (1.0 - smoothing) * nll + smoothing * smooth
@@ -1749,10 +1662,6 @@ def compute_loss(
         "loss_strong": l_strong.detach(),
     }
 
-
-# ============================================================
-# 6. Data loaders
-# ============================================================
 
 def make_dataset(
     records: List[Dict[str, Any]],
@@ -1852,10 +1761,6 @@ def move_batch(batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
     }
 
 
-# ============================================================
-# 7. EMA
-# ============================================================
-
 class ModelEMA:
     def __init__(self, model: nn.Module, decay: float = 0.999) -> None:
         self.decay = float(decay)
@@ -1884,334 +1789,6 @@ class ModelEMA:
         return self.module.state_dict()
 
 
-# ============================================================
-# 8. Train / eval
-# ============================================================
-
-@torch.no_grad()
-def spectral_cosine_values(
-    pred: torch.Tensor,
-    target: torch.Tensor,
-    mask: torch.Tensor,
-    eps: float = 1e-8,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Candidate-peak cosine retained only as a diagnostic metric."""
-    mask_f = mask.float()
-    prediction = pred * mask_f
-    gold = target * mask_f
-    numerator = (prediction * gold).sum(dim=1)
-    pred_norm = torch.sqrt((prediction * prediction).sum(dim=1) + eps)
-    gold_norm = torch.sqrt((gold * gold).sum(dim=1) + eps)
-    valid = (mask_f.sum(dim=1) > 0) & (gold_norm > math.sqrt(eps))
-    cosine = numerator / (pred_norm * gold_norm + eps)
-    return cosine, valid
-
-
-def vector_cosine_like_inference(
-    pred_values: List[float],
-    gold_values: List[float],
-) -> Optional[float]:
-    """
-    Exact scalar cosine convention used by stage2_infer_New.py.
-
-    The vectors are float32, a zero-norm vector produces None, and the
-    denominator contains 1e-8. This function is intentionally separate from
-    the differentiable training loss because it is used only for checkpoint
-    selection.
-    """
-    if not pred_values or not gold_values or len(pred_values) != len(gold_values):
-        return None
-
-    p = torch.tensor(pred_values, dtype=torch.float32)
-    y = torch.tensor(gold_values, dtype=torch.float32)
-    if p.norm().item() <= 1e-12 or y.norm().item() <= 1e-12:
-        return None
-
-    return float(torch.dot(p, y) / (p.norm() * y.norm() + 1e-8))
-
-
-def union_peak_cosine_for_one_molecule(
-    *,
-    predicted_mz_values: List[float],
-    predicted_values: List[float],
-    full_gold_intensity: Dict[str, float],
-    round_digits: int = EVAL_ROUND_DIGITS,
-) -> Optional[float]:
-    """
-    Reproduce inference ``cosine_union_peaks`` for one molecule.
-
-    - predicted spectrum keys: all retained Stage1 candidate m/z values;
-    - gold spectrum keys: every m/z in the paired full Gold intensity mapping;
-    - evaluation keys: predicted keys UNION gold keys;
-    - a missing value on either side is filled with zero;
-    - predictions are clipped and rounded before cosine, exactly as inference.
-    """
-    pred_spec: Dict[str, float] = {}
-    for mz, value in zip(predicted_mz_values, predicted_values):
-        key = format_mz_key(float(mz))
-        clipped = max(0.0, min(1.0, float(value)))
-        pred_spec[key] = round(clipped, round_digits)
-
-    gold_spec: Dict[str, float] = {}
-    for mz_key, value in (full_gold_intensity or {}).items():
-        normalized_key = normalize_mz_value(mz_key)
-        if normalized_key is None:
-            continue
-        gold_spec[normalized_key] = max(
-            0.0,
-            min(1.0, parse_float(value, 0.0)),
-        )
-
-    union_keys = sorted(
-        set(pred_spec.keys()) | set(gold_spec.keys()),
-        key=lambda key: float(key),
-    )
-    if not union_keys:
-        return None
-
-    pred_vector = [float(pred_spec.get(key, 0.0)) for key in union_keys]
-    gold_vector = [float(gold_spec.get(key, 0.0)) for key in union_keys]
-    return vector_cosine_like_inference(pred_vector, gold_vector)
-
-
-@torch.no_grad()
-def evaluate(
-    model: nn.Module,
-    loader: Optional[DataLoader],
-    device: torch.device,
-    args: argparse.Namespace,
-) -> Dict[str, float]:
-    """
-    Validate using the exact final inference metric used for model selection.
-
-    ``mean_cosine_union_peaks`` is computed per molecule on the union of:
-      1. Stage1 candidate/predicted m/z peaks, and
-      2. all m/z peaks in the paired Gold spectrum.
-
-    Gold peaks missed by Stage1 receive predicted intensity 0. Extra Stage1
-    peaks receive Gold intensity 0. The per-molecule cosine values are then
-    macro-averaged, matching ``summarize_outputs`` in stage2_infer_New.py.
-    """
-    if loader is None or len(loader.dataset) == 0:
-        return {
-            "loss_total": 0.0,
-            "loss_intensity": 0.0,
-            "loss_spectral": 0.0,
-            "loss_rank": 0.0,
-            "loss_base": 0.0,
-            "loss_strong": 0.0,
-            "candidate_peak_cosine": 0.0,
-            "mean_cosine_union_peaks": 0.0,
-            "union_cosine_count": 0.0,
-            "base_peak_candidate_recall": 0.0,
-            "conditional_base_peak_accuracy": 0.0,
-            "base_peak_accuracy": 0.0,
-            "top1_gold_coverage_recall": 0.0,
-            "top3_gold_coverage_recall": 0.0,
-            "top5_gold_coverage_recall": 0.0,
-        }
-
-    model.eval()
-    totals = {
-        "loss_total": 0.0,
-        "loss_intensity": 0.0,
-        "loss_spectral": 0.0,
-        "loss_rank": 0.0,
-        "loss_base": 0.0,
-        "loss_strong": 0.0,
-    }
-    molecule_count = 0
-
-    candidate_cosine_sum = 0.0
-    candidate_cosine_count = 0
-    union_cosine_sum = 0.0
-    union_cosine_count = 0
-
-    base_candidate_total = 0
-    base_candidate_hit = 0
-    conditional_base_correct = 0
-    overall_base_correct = 0
-    topk_coverage_sums = {1: 0.0, 3: 0.0, 5: 0.0}
-    topk_coverage_counts = {1: 0, 3: 0, 5: 0}
-
-    # Match stage2_infer_New.py default numerical path.
-    use_amp = args.amp and device.type == "cuda"
-    amp_dtype = (
-        torch.bfloat16 if args.amp_dtype == "bf16" else torch.float16
-    )
-
-    for batch in loader:
-        batch = move_batch(batch, device)
-
-        with torch.amp.autocast(
-            device_type="cuda",
-            dtype=amp_dtype,
-            enabled=use_amp,
-        ):
-            pred_raw, ranking_logits = model(
-                path_token_ids=batch["path_token_ids"],
-                product_token_ids=batch["product_token_ids"],
-                path_type_ids=batch["path_type_ids"],
-                path_mech_ids=batch["path_mech_ids"],
-                path_parent_mz=batch["path_parent_mz"],
-                path_product_mz=batch["path_product_mz"],
-                path_mask=batch["path_mask"],
-                peak_mask=batch["peak_mask"],
-                mz=batch["mz"],
-                mw=batch["mw"],
-                morgan_fp=batch["morgan_fp"],
-                return_logits=True,
-            )
-
-        pred = normalize_prediction_by_base_peak(
-            pred_raw,
-            batch["peak_mask"],
-        )
-        _, logs = compute_loss(
-            pred_raw,
-            ranking_logits,
-            batch["target"],
-            batch["peak_mask"],
-            batch["base_index"],
-            batch["base_present"],
-            batch["full_gold_l2_norm"],
-            args,
-        )
-        batch_size = int(batch["target"].size(0))
-        molecule_count += batch_size
-        for key in totals:
-            totals[key] += float(logs[key].detach().float().cpu()) * batch_size
-
-        # Diagnostic: old candidate-only cosine.
-        candidate_cosine, candidate_valid = spectral_cosine_values(
-            pred,
-            batch["target"],
-            batch["peak_mask"],
-        )
-        if candidate_valid.any():
-            candidate_cosine_sum += float(
-                candidate_cosine[candidate_valid].sum().float().cpu()
-            )
-            candidate_cosine_count += int(candidate_valid.sum().cpu())
-
-        # Selection metric: exact inference union-peak cosine.
-        pred_cpu = pred.detach().float().cpu()
-        peak_mask_cpu = batch["peak_mask"].detach().cpu()
-
-        for batch_index, meta in enumerate(batch["meta"]):
-            valid_n = int(peak_mask_cpu[batch_index].sum().item())
-            mz_values = [
-                float(value)
-                for value in meta.get("mz_values", [])[:valid_n]
-            ]
-            pred_values = [
-                float(pred_cpu[batch_index, peak_index].item())
-                for peak_index in range(valid_n)
-            ]
-
-            union_cosine = union_peak_cosine_for_one_molecule(
-                predicted_mz_values=mz_values,
-                predicted_values=pred_values,
-                full_gold_intensity=meta.get("full_gold_intensity", {}),
-                round_digits=EVAL_ROUND_DIGITS,
-            )
-            if union_cosine is not None and math.isfinite(union_cosine):
-                union_cosine_sum += float(union_cosine)
-                union_cosine_count += 1
-
-            gold_spec = {
-                normalize_mz_value(key): max(
-                    0.0,
-                    min(1.0, parse_float(value, 0.0)),
-                )
-                for key, value in meta.get(
-                    "full_gold_intensity", {}
-                ).items()
-                if normalize_mz_value(key) is not None
-            }
-            candidate_set = {
-                format_mz_key(float(value)) for value in mz_values
-            }
-            true_base_mz = normalize_mz_value(
-                meta.get("true_base_mz")
-            )
-            if true_base_mz is not None:
-                base_candidate_total += 1
-                candidate_has_base = true_base_mz in candidate_set
-                base_candidate_hit += int(candidate_has_base)
-
-                if pred_values:
-                    pred_base_index = max(
-                        range(len(pred_values)),
-                        key=lambda index: (
-                            pred_values[index],
-                            mz_values[index],
-                        ),
-                    )
-                    predicted_base_mz = format_mz_key(
-                        float(mz_values[pred_base_index])
-                    )
-                    base_correct = predicted_base_mz == true_base_mz
-                    overall_base_correct += int(base_correct)
-                    if candidate_has_base:
-                        conditional_base_correct += int(base_correct)
-
-            for top_k in (1, 3, 5):
-                if not gold_spec:
-                    continue
-                gold_top = {
-                    key
-                    for key, _ in sorted(
-                        gold_spec.items(),
-                        key=lambda item: (item[1], parse_float(item[0])),
-                        reverse=True,
-                    )[:top_k]
-                }
-                if gold_top:
-                    topk_coverage_sums[top_k] += (
-                        len(gold_top & candidate_set) / len(gold_top)
-                    )
-                    topk_coverage_counts[top_k] += 1
-
-    result = {
-        key: value / max(1, molecule_count)
-        for key, value in totals.items()
-    }
-    result["candidate_peak_cosine"] = (
-        candidate_cosine_sum / candidate_cosine_count
-        if candidate_cosine_count > 0
-        else 0.0
-    )
-    result["mean_cosine_union_peaks"] = (
-        union_cosine_sum / union_cosine_count
-        if union_cosine_count > 0
-        else 0.0
-    )
-    result["union_cosine_count"] = float(union_cosine_count)
-    result["base_peak_candidate_recall"] = (
-        base_candidate_hit / base_candidate_total
-        if base_candidate_total > 0
-        else 0.0
-    )
-    result["conditional_base_peak_accuracy"] = (
-        conditional_base_correct / base_candidate_hit
-        if base_candidate_hit > 0
-        else 0.0
-    )
-    result["base_peak_accuracy"] = (
-        overall_base_correct / base_candidate_total
-        if base_candidate_total > 0
-        else 0.0
-    )
-    for top_k in (1, 3, 5):
-        result[f"top{top_k}_gold_coverage_recall"] = (
-            topk_coverage_sums[top_k] / topk_coverage_counts[top_k]
-            if topk_coverage_counts[top_k] > 0
-            else 0.0
-        )
-    return result
-
-
 def save_checkpoint(
     path: str,
     *,
@@ -2222,10 +1799,9 @@ def save_checkpoint(
     scaler: torch.amp.GradScaler,
     epoch: int,
     global_step: int,
-    best_cosine: float,
     phase_name: str,
     args: argparse.Namespace,
-    val_logs: Optional[Dict[str, float]] = None,
+    train_logs: Optional[Dict[str, float]] = None,
     selected_model: str = "raw",
 ) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -2236,7 +1812,6 @@ def save_checkpoint(
     )
     torch.save(
         {
-            # Existing inference code can continue loading checkpoint["model"].
             "model": selected_state,
             "raw_model": model.state_dict(),
             "ema_model": ema.state_dict(),
@@ -2246,33 +1821,13 @@ def save_checkpoint(
             "scaler": scaler.state_dict(),
             "epoch": epoch,
             "global_step": global_step,
-            "best_cosine": best_cosine,
-            "best_mean_cosine_union_peaks": best_cosine,
-            "selection_metric": "mean_cosine_union_peaks",
-            "best_val": -best_cosine,
             "phase_name": phase_name,
             "args": vars(args),
-            "val_logs": val_logs or {},
+            "train_logs": train_logs or {},
             "model_input_version": "path_parent_product_mz_morgan_globaltoken_softplus_fiveloss_v7",
         },
         path,
     )
-
-
-def load_selected_checkpoint_into_model(
-    checkpoint_path: str,
-    model: nn.Module,
-    ema: ModelEMA,
-    device: torch.device,
-) -> Dict[str, Any]:
-    checkpoint = torch.load(
-        checkpoint_path,
-        map_location=device,
-        weights_only=False,
-    )
-    model.load_state_dict(checkpoint["model"], strict=True)
-    ema.reset_from(model)
-    return checkpoint
 
 
 def train_one_phase(
@@ -2281,7 +1836,6 @@ def train_one_phase(
     forward_model: nn.Module,
     ema: ModelEMA,
     train_loader: DataLoader,
-    val_loader: Optional[DataLoader],
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     scaler: torch.amp.GradScaler,
@@ -2290,11 +1844,7 @@ def train_one_phase(
     phase_name: str,
     epochs: int,
     global_step: int,
-    global_best_cosine: float,
-    phase_best_path: str,
 ) -> Dict[str, Any]:
-    phase_best_cosine = float("-inf")
-    no_improve = 0
     use_amp = args.amp and device.type == "cuda"
     amp_dtype = torch.bfloat16 if args.amp_dtype == "bf16" else torch.float16
     log_keys = (
@@ -2379,8 +1929,8 @@ def train_one_phase(
                 running[key].add_(logs[key].float() * batch_size)
 
             if step % args.print_every == 0 or step == total_micro_steps:
-                # One synchronization for all scalar logs, rather than one
-                # .cpu() call per loss per micro-step.
+
+
                 stacked = torch.stack([running[key] for key in log_keys]) / max(1, seen_molecules)
                 values = stacked.detach().float().cpu().tolist()
                 averages = dict(zip(log_keys, values))
@@ -2401,19 +1951,6 @@ def train_one_phase(
 
         stacked = torch.stack([running[key] for key in log_keys]) / max(1, seen_molecules)
         train_average = dict(zip(log_keys, stacked.detach().float().cpu().tolist()))
-        val_logs = evaluate(ema.module, val_loader, device, args) if val_loader is not None else {
-            **train_average,
-            "candidate_peak_cosine": 1.0 - train_average["loss_spectral"],
-            "mean_cosine_union_peaks": 1.0 - train_average["loss_spectral"],
-            "union_cosine_count": 0.0,
-            "base_peak_candidate_recall": 0.0,
-            "conditional_base_peak_accuracy": 0.0,
-            "base_peak_accuracy": 0.0,
-            "top1_gold_coverage_recall": 0.0,
-            "top3_gold_coverage_recall": 0.0,
-            "top5_gold_coverage_recall": 0.0,
-        }
-        val_cosine = float(val_logs["mean_cosine_union_peaks"])
         epoch_seconds = time.perf_counter() - epoch_start
         peak_allocated_gb = 0.0
         peak_reserved_gb = 0.0
@@ -2431,9 +1968,6 @@ def train_one_phase(
             "cuda_peak_allocated_gb": round(peak_allocated_gb, 3),
             "cuda_peak_reserved_gb": round(peak_reserved_gb, 3),
             "train": train_average,
-            "val_ema": val_logs,
-            "selection_metric": "mean_cosine_union_peaks",
-            "validation_source": args.infer_val_file,
         }
         append_jsonl(log_line, os.path.join(args.output_dir, "train_log.jsonl"))
 
@@ -2441,9 +1975,8 @@ def train_one_phase(
             f"[{phase_name}] epoch={epoch} done | seconds={epoch_seconds:.2f} "
             f"mol/s={seen_molecules/max(epoch_seconds,1e-6):.2f} "
             f"cuda_peak={peak_allocated_gb:.2f}/{peak_reserved_gb:.2f}GB "
-            f"val_union_cosine={val_cosine:.6f} "
-            f"val_candidate_cosine={val_logs['candidate_peak_cosine']:.6f} "
-            f"base_acc={val_logs['base_peak_accuracy']:.4f}"
+            f"total={train_average['loss_total']:.6f} "
+            f"union={train_average['loss_spectral']:.6f}"
         )
 
         save_checkpoint(
@@ -2455,339 +1988,26 @@ def train_one_phase(
             scaler=scaler,
             epoch=epoch,
             global_step=global_step,
-            best_cosine=max(global_best_cosine, val_cosine),
             phase_name=phase_name,
             args=args,
-            val_logs=val_logs,
-            selected_model="raw",
+            train_logs=train_average,
+            selected_model="ema",
         )
-
-        if val_cosine > phase_best_cosine + args.min_delta:
-            phase_best_cosine = val_cosine
-            no_improve = 0
-            save_checkpoint(
-                phase_best_path,
-                model=model,
-                ema=ema,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                scaler=scaler,
-                epoch=epoch,
-                global_step=global_step,
-                best_cosine=phase_best_cosine,
-                phase_name=phase_name,
-                args=args,
-                val_logs=val_logs,
-                selected_model="ema",
-            )
-            print(
-                f"[SAVE] {Path(phase_best_path).name} updated: "
-                f"EMA mean_cosine_union_peaks={phase_best_cosine:.6f}"
-            )
-        else:
-            no_improve += 1
-
-        if val_cosine > global_best_cosine + args.min_delta:
-            global_best_cosine = val_cosine
-            save_checkpoint(
-                os.path.join(args.output_dir, "best.pt"),
-                model=model,
-                ema=ema,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                scaler=scaler,
-                epoch=epoch,
-                global_step=global_step,
-                best_cosine=global_best_cosine,
-                phase_name=phase_name,
-                args=args,
-                val_logs=val_logs,
-                selected_model="ema",
-            )
-            print(
-                f"[SAVE] best.pt updated: EMA mean_cosine_union_peaks={global_best_cosine:.6f}"
-            )
-
-        if args.early_stop_patience > 0 and no_improve >= args.early_stop_patience:
-            print(
-                f"[EARLY STOP] phase={phase_name}, no cosine improvement "
-                f"for {no_improve} epochs."
-            )
-            break
 
     return {
         "global_step": global_step,
-        "global_best_cosine": global_best_cosine,
-        "phase_best_cosine": phase_best_cosine,
+        "epoch": epochs,
     }
 
 
-# ============================================================
-# 9. CLI
-# ============================================================
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        "Optimized Stage2 Structured Tree-Path Attention trainer"
-    )
-
-    parser.add_argument(
-        "--gold_train_file",
-        type=str,
-        default="./dataset/train/stage2_gold_train.jsonl",
-    )
-    parser.add_argument(
-        "--stage1_train_file",
-        type=str,
-        default="./dataset/train/stage2_stage1_predict_train.jsonl",
-        help=(
-            "Stage1-generated training file. Prefer the same processed/filtered "
-            "distribution used by final inference; all candidates are trained "
-            "with one continuous intensity objective."
-        ),
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="./outputs/stage2_treepath_attention_optimized",
-    )
-    parser.add_argument(
-        "--infer_val_file",
-        type=str,
-        required=True,
-        help=(
-            "Independent infer JSON/JSONL used exclusively for validation "
-            "cosine and best-checkpoint selection."
-        ),
-    )
-    parser.add_argument(
-        "--infer_val_gold_file",
-        type=str,
-        default="",
-        help=(
-            "Optional held-out gold JSON/JSONL containing target intensities. "
-            "It is merged with --infer_val_file by molecule id. This is not "
-            "the training gold file."
-        ),
-    )
-
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--grad_accum", type=int, default=1)
-    parser.add_argument("--num_workers", type=int, default=12)
-    parser.add_argument("--prefetch_factor", type=int, default=4)
-
-    # Single-stage Stage1-tree adaptation schedule.
-    # Gold data are retained only for the optional Phase-B replay mixture;
-    # there is no separate Gold-tree warmup phase.
-    parser.add_argument("--stage1_epochs", type=int, default=350)
-    parser.add_argument("--stage1_lr", type=float, default=5.0e-5)
-    parser.add_argument("--phase_b_gold_ratio", type=float, default=0.08)
-    parser.add_argument("--warmup_ratio", type=float, default=0.06)
-    parser.add_argument("--weight_decay", type=float, default=1e-2)
-    parser.add_argument("--grad_clip", type=float, default=1.0)
-    parser.add_argument("--early_stop_patience", type=int, default=8)
-    parser.add_argument("--min_delta", type=float, default=1e-5)
-    parser.add_argument("--ema_decay", type=float, default=0.999)
-
-    # Smaller default capacity; still large enough for structured tree inputs.
-    parser.add_argument("--vocab_size", type=int, default=65536)
-    parser.add_argument("--d_model", type=int, default=1152)
-    parser.add_argument("--n_heads", type=int, default=18)
-    parser.add_argument("--interaction_layers", type=int, default=10)
-    parser.add_argument("--dropout", type=float, default=0.08)
-
-    parser.add_argument("--max_peaks", type=int, default=320)
-    parser.add_argument("--max_path_len", type=int, default=128)
-    parser.add_argument("--max_words_per_token", type=int, default=48)
-    parser.add_argument("--morgan_fp_dim", type=int, default=4096)
-    parser.add_argument("--morgan_radius", type=int, default=2)
-
-    # Similarity-first five-loss objective. Presence/extra losses are fully removed.
-    # Raw loss magnitudes differ, so these are optimization coefficients rather
-    # than percentages. Intensity regression is deliberately weak; exact
-    # union-space cosine and continuous ranking dominate.
-    parser.add_argument("--lambda_intensity", type=float, default=0.05)
-    parser.add_argument("--lambda_spectral", type=float, default=3.00)
-    parser.add_argument("--lambda_rank", type=float, default=0.00)
-    parser.add_argument("--lambda_base", type=float, default=0.00)
-    parser.add_argument("--lambda_strong", type=float, default=0.00)
-
-    # ============================================================
-    # Ablation switches
-    #
-    # All switches are OFF by default. Therefore, the command used for the
-    # original full model does not need to change and all original weights,
-    # schedules, dimensions, and optimization settings remain unchanged.
-    #
-    # Loss-level ablations:
-    #   each switch only sets the corresponding lambda to 0.0.
-    #
-    # Architecture/training ablations:
-    #   --ablate_global_context
-    #   --ablate_path_attention
-    #   --ablate_inter_peak_interaction
-    #   --ablate_gold_guided_curriculum
-    # ============================================================
-    parser.add_argument(
-        "--ablate_intensity_loss",
-        action="store_true",
-        default=False,
-        help="Ablation: set lambda_intensity=0 while leaving all other settings unchanged.",
-    )
-    parser.add_argument(
-        "--ablate_spectral_loss",
-        action="store_true",
-        default=False,
-        help="Ablation: set lambda_spectral=0 while leaving all other settings unchanged.",
-    )
-    parser.add_argument(
-        "--ablate_ranking_loss",
-        action="store_true",
-        default=False,
-        help="Ablation: set lambda_rank=0 while leaving all other settings unchanged.",
-    )
-    parser.add_argument(
-        "--ablate_base_peak_loss",
-        action="store_true",
-        default=False,
-        help="Ablation: set lambda_base=0 while leaving all other settings unchanged.",
-    )
-    parser.add_argument(
-        "--ablate_strong_peak_loss",
-        action="store_true",
-        default=False,
-        help="Ablation: set lambda_strong=0 while leaving all other settings unchanged.",
-    )
-    parser.add_argument(
-        "--ablate_global_context",
-        "--no_global_context",
-        dest="ablate_global_context",
-        action="store_true",
-        default=False,
-        help=(
-            "Ablation: remove the Morgan-fingerprint global molecular branch, "
-            "local-global gated fusion, and global molecule token/context fusion."
-        ),
-    )
-    parser.add_argument(
-        "--ablate_path_attention",
-        "--no_path_attention",
-        dest="ablate_path_attention",
-        action="store_true",
-        default=False,
-        help=(
-            "Ablation: replace learnable ROOT-to-peak path attention with "
-            "masked mean pooling over the same path tokens."
-        ),
-    )
-    parser.add_argument(
-        "--ablate_inter_peak_interaction",
-        "--no_inter_peak_interaction",
-        dest="ablate_inter_peak_interaction",
-        action="store_true",
-        default=False,
-        help=(
-            "Ablation: bypass the cross-peak Transformer interaction and "
-            "predict each candidate intensity from its local path representation."
-        ),
-    )
-    parser.add_argument(
-        "--ablate_gold_guided_curriculum",
-        "--no_gold_guided_curriculum",
-        dest="ablate_gold_guided_curriculum",
-        action="store_true",
-        default=False,
-        help=(
-            "Ablation: remove Phase-B Gold replay while leaving the Stage1-tree "
-            "training schedule unchanged. The Gold-tree warmup phase is not "
-            "present in this trainer."
-        ),
-    )
-
-    parser.add_argument("--smooth_l1_beta", type=float, default=0.04)
-    parser.add_argument("--peak_weight_alpha", type=float, default=2.0)
-    parser.add_argument("--base_peak_extra", type=float, default=3.0)
-    parser.add_argument("--strong_peak_extra", type=float, default=1.5)
-    parser.add_argument("--strong_peak_threshold", type=float, default=0.30)
-    parser.add_argument("--strong_peak_gamma", type=float, default=1.4)
-    parser.add_argument("--strong_peak_topk", type=int, default=5)
-    parser.add_argument("--rank_min_gap", type=float, default=0.015)
-    parser.add_argument("--rank_base_margin", type=float, default=0.03)
-    parser.add_argument("--rank_gap_margin_scale", type=float, default=0.22)
-
-    parser.add_argument("--base_label_smoothing", type=float, default=0.01)
-    parser.add_argument("--peak_bucket_multiple", type=int, default=32)
-    parser.add_argument("--path_bucket_multiple", type=int, default=8)
-    parser.add_argument(
-        "--auto_batch_size",
-        action="store_true",
-        default=True,
-        help="Probe the largest safe batch on the most expensive training shape.",
-    )
-    parser.add_argument(
-        "--no_auto_batch_size",
-        action="store_false",
-        dest="auto_batch_size",
-    )
-    parser.add_argument("--auto_batch_memory_fraction", type=float, default=0.86)
-    parser.add_argument("--auto_batch_max", type=int, default=64)
-    parser.add_argument("--auto_batch_step", type=int, default=4)
-
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda" if torch.cuda.is_available() else "cpu",
-    )
-    parser.add_argument("--amp", action="store_true", default=True)
-    parser.add_argument("--no_amp", action="store_false", dest="amp")
-    parser.add_argument(
-        "--amp_dtype",
-        type=str,
-        default="bf16",
-        choices=["bf16", "fp16"],
-    )
-    parser.add_argument("--print_every", type=int, default=25)
-    parser.add_argument(
-        "--compile_model",
-        action="store_true",
-        default=True,
-        help="Use torch.compile for the training forward/backward path.",
-    )
-    parser.add_argument(
-        "--no_compile_model",
-        action="store_false",
-        dest="compile_model",
-    )
-    parser.add_argument(
-        "--compile_mode",
-        type=str,
-        default="reduce-overhead",
-        choices=[
-            "default",
-            "reduce-overhead",
-            "max-autotune",
-            "max-autotune-no-cudagraphs",
-        ],
-    )
-
-    return parser.parse_args()
+def build_config() -> argparse.Namespace:
+    return argparse.Namespace(**RUN_CONFIG)
 
 
 def apply_ablation_overrides(args: argparse.Namespace) -> argparse.Namespace:
-    """
-    Apply optional ablation switches after CLI parsing.
-
-    When no ablation switch is supplied, this function changes nothing.
-    Therefore the original full-model hyperparameters and training schedule
-    remain exactly the same.
-    """
     active: List[str] = []
 
-    # ------------------------------------------------------------
-    # Five loss-level ablations.
-    # Only the selected coefficient is set to zero.
-    # ------------------------------------------------------------
+
     if args.ablate_intensity_loss:
         args.lambda_intensity = 0.0
         active.append("w/o Intensity loss")
@@ -2808,11 +2028,7 @@ def apply_ablation_overrides(args: argparse.Namespace) -> argparse.Namespace:
         args.lambda_strong = 0.0
         active.append("w/o Strong-peak loss")
 
-    # ------------------------------------------------------------
-    # Architecture ablations.
-    # These do not alter dimensions, parameter initialization order,
-    # optimizer defaults, loss weights, or data preprocessing.
-    # ------------------------------------------------------------
+
     if args.ablate_global_context:
         active.append("w/o Global molecular context")
 
@@ -2822,19 +2038,12 @@ def apply_ablation_overrides(args: argparse.Namespace) -> argparse.Namespace:
     if args.ablate_inter_peak_interaction:
         active.append("w/o Inter-peak interaction")
 
-    # ------------------------------------------------------------
-    # Gold-guided curriculum ablation.
-    #
-    # This trainer has no separate Gold-tree warmup. The existing ablation
-    # switch is kept fully backward-compatible and now removes only the
-    # Phase-B Gold replay mixture. Stage1 epochs and all other settings stay
-    # unchanged.
-    # ------------------------------------------------------------
+
     if args.ablate_gold_guided_curriculum:
         args.phase_b_gold_ratio = 0.0
         active.append("w/o Gold-guided curriculum")
 
-    # Do not allow an accidentally empty objective.
+
     lambda_values = [
         float(args.lambda_intensity),
         float(args.lambda_spectral),
@@ -2989,7 +2198,6 @@ def auto_tune_batch_size(
     device: torch.device,
     args: argparse.Namespace,
 ) -> int:
-    """Probe the largest safe batch on the most expensive observed shape."""
     if (
         not args.auto_batch_size
         or device.type != "cuda"
@@ -3101,7 +2309,7 @@ def auto_tune_batch_size(
 
 
 def main() -> None:
-    args = parse_args()
+    args = build_config()
     args = apply_ablation_overrides(args)
     set_seed(args.seed)
     setup_cuda_high_throughput()
@@ -3125,29 +2333,12 @@ def main() -> None:
 
     gold_records = load_json_or_jsonl(args.gold_train_file)
     stage1_records = load_json_or_jsonl(args.stage1_train_file)
-    infer_records_raw = load_json_or_jsonl(args.infer_val_file)
-    infer_gold_records = (
-        load_json_or_jsonl(args.infer_val_gold_file)
-        if args.infer_val_gold_file
-        else []
-    )
 
     if not gold_records and not stage1_records:
         raise FileNotFoundError(
-            "No training records loaded. Check --gold_train_file and "
-            "--stage1_train_file."
+            "No training records loaded. Check gold_train_file and "
+            "stage1_train_file."
         )
-    if not infer_records_raw:
-        raise FileNotFoundError(
-            "No independent validation records loaded from --infer_val_file. "
-            "Training/gold-training data are intentionally not used as "
-            "validation fallback."
-        )
-
-    infer_val_records = merge_infer_validation_records(
-        infer_records_raw,
-        infer_gold_records,
-    )
 
     print(
         f"[INFO] gold_train_records={len(gold_records)} "
@@ -3157,45 +2348,21 @@ def main() -> None:
         f"[INFO] stage1_train_records={len(stage1_records)} "
         f"from {args.stage1_train_file}"
     )
-    print(
-        f"[INFO] infer_val_records={len(infer_val_records)} "
-        f"from {args.infer_val_file}"
-    )
-    if args.infer_val_gold_file:
-        print(
-            f"[INFO] infer_val_gold_records={len(infer_gold_records)} "
-            f"from {args.infer_val_gold_file}"
-        )
 
     gold_train_ids = {get_record_id(r) for r in gold_records if get_record_id(r)}
     stage1_train_ids = {get_record_id(r) for r in stage1_records if get_record_id(r)}
-    infer_val_ids = {get_record_id(r) for r in infer_val_records if get_record_id(r)}
-    train_union_ids = gold_train_ids | stage1_train_ids
-    overlap_ids = sorted(train_union_ids & infer_val_ids)
-    if overlap_ids:
-        print(
-            f"[WARN] train/infer-validation id overlap: {len(overlap_ids)}. "
-            "These records will make checkpoint selection optimistic."
-        )
 
     write_json(
         {
             "seed": args.seed,
-            "validation_source": "infer_file_only",
             "gold_train_file": args.gold_train_file,
             "stage1_train_file": args.stage1_train_file,
-            "infer_val_file": args.infer_val_file,
-            "infer_val_gold_file": args.infer_val_gold_file,
             "gold_train_ids": sorted(gold_train_ids),
             "stage1_train_ids": sorted(stage1_train_ids),
-            "infer_val_ids": sorted(infer_val_ids),
-            "train_infer_overlap_ids": overlap_ids,
         },
         os.path.join(args.output_dir, "data_manifest.json"),
     )
 
-    # Every training record is used for training. Validation is constructed
-    # exclusively from --infer_val_file (plus optional held-out infer gold).
     gold_train_dataset = make_dataset(
         gold_records,
         source_type="gold_train",
@@ -3206,41 +2373,12 @@ def main() -> None:
         source_type="stage1_train",
         args=args,
     )
-    infer_val_dataset = make_dataset(
-        infer_val_records,
-        source_type="infer_val",
-        args=args,
-    )
-
-    if infer_val_dataset is None or len(infer_val_dataset) == 0:
-        raise RuntimeError(
-            "All --infer_val_file records were skipped. Confirm that each "
-            "validation record contains Stage1 triplets and molecule metadata."
-        )
-
-    positive_target_molecules = sum(
-        1
-        for example in infer_val_dataset.examples
-        if any(value > 0 for value in example.full_gold_intensity.values())
-    )
-    if positive_target_molecules == 0:
-        raise RuntimeError(
-            "The infer validation set contains no positive target intensity. "
-            "Put target intensities in --infer_val_file or provide the matching "
-            "held-out --infer_val_gold_file. Training gold data will not be "
-            "used as a fallback."
-        )
-    print(
-        f"[INFO] infer validation molecules with positive targets: "
-        f"{positive_target_molecules}/{len(infer_val_dataset)}"
-    )
 
     truncation_report = {
         name: dataset.truncation_stats
         for name, dataset in {
             "gold_train": gold_train_dataset,
             "stage1_train": stage1_train_dataset,
-            "infer_val": infer_val_dataset,
         }.items()
         if dataset is not None
     }
@@ -3274,10 +2412,6 @@ def main() -> None:
     stage1_train_loader = make_stage1_replay_loader(
         stage1_train_dataset, gold_train_dataset, args=args
     )
-    infer_val_loader = make_loader_from_dataset(
-        infer_val_dataset, args=args, shuffle=False
-    )
-    main_val_loader = infer_val_loader
     if stage1_train_loader is None:
         raise RuntimeError(
             "All Stage1 training records were skipped during tree construction."
@@ -3307,16 +2441,7 @@ def main() -> None:
         if parameter.requires_grad
     )
     print(f"[INFO] trainable_parameters={trainable_parameters:,}")
-    print(
-        "[INFO] checkpoint selection: highest infer-validation EMA "
-        "mean_cosine_union_peaks"
-    )
-    print(
-        f"[INFO] validation source is strictly --infer_val_file: "
-        f"{args.infer_val_file}"
-    )
 
-    # BF16 does not require dynamic loss scaling; FP16 keeps GradScaler.
     scaler = torch.amp.GradScaler(
         "cuda",
         enabled=(
@@ -3402,18 +2527,12 @@ def main() -> None:
             "batch_size": args.batch_size,
             "auto_batch_size": args.auto_batch_size,
             "auto_batch_memory_fraction": args.auto_batch_memory_fraction,
-            "selection_metric": "mean_cosine_union_peaks",
-            "selection_peak_space": "stage1_predicted_mz_union_full_gold_mz",
-            "selection_round_digits": EVAL_ROUND_DIGITS,
-            "selection_missing_peak_value": 0.0,
-            "selection_reduction": "per_molecule_macro_mean",
+            "checkpoint_epoch": args.stage1_epochs,
+            "checkpoint_model": "ema",
         },
         "data": {
             "gold_train_file": args.gold_train_file,
             "stage1_train_file": args.stage1_train_file,
-            "infer_val_file": args.infer_val_file,
-            "infer_val_gold_file": args.infer_val_gold_file,
-            "validation_source": "infer_file_only",
             "max_peaks": args.max_peaks,
             "max_path_len": args.max_path_len,
             "max_words_per_token": args.max_words_per_token,
@@ -3423,8 +2542,6 @@ def main() -> None:
             "morgan_radius": args.morgan_radius,
             "gold_train_records": len(gold_records),
             "stage1_train_records": len(stage1_records),
-            "infer_val_records": len(infer_val_records),
-            "train_infer_overlap_ids": len(overlap_ids),
         },
     }
     write_json(
@@ -3433,7 +2550,6 @@ def main() -> None:
     )
 
     global_step = 0
-    global_best_cosine = float("-inf")
 
     if stage1_train_loader is not None and args.stage1_epochs > 0:
         print("\n" + "=" * 80)
@@ -3452,7 +2568,6 @@ def main() -> None:
             forward_model=forward_model,
             ema=ema,
             train_loader=stage1_train_loader,
-            val_loader=main_val_loader,
             optimizer=optimizer,
             scheduler=scheduler,
             scaler=scaler,
@@ -3461,23 +2576,12 @@ def main() -> None:
             phase_name="stage1_tree_adaptation",
             epochs=args.stage1_epochs,
             global_step=global_step,
-            global_best_cosine=global_best_cosine,
-            phase_best_path=os.path.join(args.output_dir, "best_stage1.pt"),
         )
         global_step = int(phase_b["global_step"])
-        global_best_cosine = float(phase_b["global_best_cosine"])
 
     print("\n[DONE]")
-    print(
-        f"Best infer-validation EMA mean_cosine_union_peaks: "
-        f"{global_best_cosine:.6f}"
-    )
-    print(f"Best checkpoint: {os.path.join(args.output_dir, 'best.pt')}")
-    print(
-        f"Best Stage1 checkpoint: "
-        f"{os.path.join(args.output_dir, 'best_stage1.pt')}"
-    )
-    print(f"Last checkpoint: {os.path.join(args.output_dir, 'last.pt')}")
+    print(f"Completed epochs: {args.stage1_epochs}")
+    print(f"Checkpoint: {os.path.join(args.output_dir, 'last.pt')}")
     print(f"Training log: {os.path.join(args.output_dir, 'train_log.jsonl')}")
     print(
         "Candidate truncation report: "
