@@ -40,14 +40,9 @@ PRODUCT_FORMULA_RE = re.compile(
     re.IGNORECASE,
 )
 
-SYSTEM_PROMPT = """You are IonRecall-FITGraph, an EI mass-spectrometry mechanism-triplet graph generator.
-Given only the molecular name, SMILES, formula, molecular weight, and compound class,
-first recover a high-recall inventory of product ions, then explain those ions with
-label fragments and precursor-ion transition triplets.
-Omission of a plausible product ion is more serious than adding one extra plausible ion.
-Use only the allowed mechanism names.
-Do not output reasoning, spectrum intensity, markdown, or commentary.
-Output only the required FITGraph text format and end with [GRAPH_END]."""
+SYSTEM_PROMPT = """You are IonRecall-FITTree, an EI mass-spectrometry mechanism-triplet graph generator. Given only the molecular name, SMILES, formula, molecular weight, and compound class,
+first recover a high-recall inventory of product ions, then explain those ions with label fragments and precursor-ion transition triplets. Omission of a plausible product ion is more serious than adding one extra plausible ion.
+Use only the allowed mechanism names. Do not output reasoning, spectrum intensity, markdown, or commentary. Output only the required FITTree text format and end with [GRAPH_END]."""
 
 FORMAT_INSTRUCTION = """Required ion-first format:
 [COUNTS]	fragments=<int>	ions=<int>	fragment_edges=<int>	ion_edges=<int>
@@ -63,7 +58,7 @@ F0	I0	<mechanism>
 [ION_TO_ION]
 I0	I1	<mechanism>
 [/ION_TO_ION]
-[GRAPH_END]
+[TREE_END]
 
 Allowed mechanisms:
 - Molecular ion
@@ -87,7 +82,7 @@ Rules:
 - Preserve learned fragment labels even when they are not valid SMILES.
 - Use one ion node per m/z.
 - Do not invent spectrum intensity.
-- Output [GRAPH_END] exactly once at the end."""
+- Output [TREE_END] exactly once at the end."""
 
 
 def read_jsonl(path: Path) -> List[Dict[str, Any]]:
@@ -204,7 +199,7 @@ def build_representation_prompt(tokenizer: Any, record: Dict[str, Any]) -> str:
         return tokenizer.apply_chat_template(messages, **kwargs)
 
 
-def build_fitgraph(record: Dict[str, Any]) -> Dict[str, Any]:
+def build_fittree(record: Dict[str, Any]) -> Dict[str, Any]:
     triplets = record.get("corrected_triplet", [])
     if not isinstance(triplets, list):
         triplets = []
@@ -376,7 +371,7 @@ def build_fitgraph(record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def graph_to_dsl(graph: Dict[str, Any]) -> str:
-    """Serialize FITGraph with the ion inventory before fragments and edges."""
+    """Serialize FITTree with the ion inventory before fragments and edges."""
     counts = graph.get("counts", {})
     lines: List[str] = [
         (
@@ -421,7 +416,7 @@ def graph_to_dsl(graph: Dict[str, Any]) -> str:
             f"{edge.get('mechanism')}"
         )
     lines.append("[/ION_TO_ION]")
-    lines.append("[GRAPH_END]")
+    lines.append("[TREE_END]")
     return "\n".join(lines)
 
 
@@ -430,13 +425,13 @@ def _extract_graph_text(text: str) -> str:
     start = raw.find("[COUNTS]")
     if start < 0:
         return raw.strip()
-    end = raw.find("[GRAPH_END]", start)
+    end = raw.find("[TREE_END]", start)
     if end < 0:
         return raw[start:].strip()
-    return raw[start : end + len("[GRAPH_END]")].strip()
+    return raw[start : end + len("[TREE_END]")].strip()
 
 
-def parse_fitgraph_dsl(text: str) -> Tuple[Dict[str, Any], bool, List[str]]:
+def parse_fittree_dsl(text: str) -> Tuple[Dict[str, Any], bool, List[str]]:
     graph_text = _extract_graph_text(text)
     errors: List[str] = []
     if not graph_text:
@@ -491,7 +486,7 @@ def parse_fitgraph_dsl(text: str) -> Tuple[Dict[str, Any], bool, List[str]]:
         if line == "[/ION_TO_ION]":
             section = None
             continue
-        if line == "[GRAPH_END]":
+        if line == "[TREE_END]":
             section = None
             continue
 
@@ -633,7 +628,7 @@ def parse_fitgraph_dsl(text: str) -> Tuple[Dict[str, Any], bool, List[str]]:
         "fragment_to_ion": valid_fragment_edges,
         "ion_to_ion": valid_ion_edges,
     }
-    parse_ok = "[GRAPH_END]" in graph_text and len(ions) > 0
+    parse_ok = "[TREE_END]" in graph_text and len(ions) > 0
     return graph, parse_ok, errors
 
 
@@ -1169,12 +1164,12 @@ def build_repair_chat_prompt(
         f"Formula: {record.get('formula', '')}\n"
         f"MW: {record.get('mw', '')}\n"
         f"Compound class: {record.get('compound_class', '')}\n\n"
-        "The following first-pass FITGraph may be incomplete.\n"
+        "The following first-pass FITTree may be incomplete.\n"
         f"High-recall candidate product m/z values: {candidate_text or 'none'}\n"
         "Keep all chemically supported existing content. Recover omitted "
         "product ions and add their most plausible mechanism triplets. "
-        "Return one complete corrected ion-first FITGraph.\n\n"
-        "Draft FITGraph:\n"
+        "Return one complete corrected ion-first FITTree.\n\n"
+        "Draft FITTree:\n"
         f"{graph_to_dsl(draft_graph)}\n\n"
         f"{FORMAT_INSTRUCTION}"
     )
@@ -1284,7 +1279,7 @@ def merge_graphs_no_delete(
 
     rebuilt_record = dict(record)
     rebuilt_record["corrected_triplet"] = combined
-    return build_fitgraph(rebuilt_record)
+    return build_fittree(rebuilt_record)
 
 
 def strict_inference_row(
