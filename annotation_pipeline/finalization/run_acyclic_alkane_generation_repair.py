@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from openai import OpenAI
 
 try:
-    from rdkit import Chem  # type: ignore
+    from rdkit import Chem
 except Exception:
     Chem = None
 
