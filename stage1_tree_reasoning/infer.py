@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-CHECKPOINT_DIR = "./outputs/aromatic_hydrocarbon/Qwen25-14B_44_fitgraph/final_checkpoint"
+CHECKPOINT_DIR = "./outputs/aromatic_hydrocarbon/Qwen25-14B_44_fittree/final_checkpoint"
 TEST_DATA_FILE = "./data/aromatic_hydrocarbon/infer.jsonl"
-OUTPUT_DIR = "./outputs/aromatic_hydrocarbon/Qwen25-14B_44_fitgraph/inference"
+OUTPUT_DIR = "./outputs/aromatic_hydrocarbon/Qwen25-14B_44_fittree/inference"
 OUTPUT_FILENAME = "infer_result.jsonl"
 
 MODEL_NAME_OR_PATH = "/hpc2hdd/home/fye374/models/Qwen2.5-14B-Instruct"
@@ -47,13 +47,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from fittree import (
     build_chat_prompt,
-    build_fitgraph,
+    build_fittree,
     build_repair_chat_prompt,
     evaluate_predictions,
     macro_ion_fbeta_similarity,
     merge_graphs_no_delete,
     output_graph_similarity,
-    parse_fitgraph_dsl,
+    parse_fittree_dsl,
     product_ion_mzs_from_graph,
     read_jsonl,
     strict_inference_row,
@@ -205,9 +205,9 @@ def load_config(checkpoint_dir: Path) -> Dict[str, Any]:
     if not config_path.is_file():
         raise FileNotFoundError(config_path)
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    if config.get("architecture") != "IonRecall-FITGraph-V2":
+    if config.get("architecture") != "IonRecall-FITTree-V2":
         raise RuntimeError(
-            "The checkpoint is not an IonRecall-FITGraph-V2 checkpoint."
+            "The checkpoint is not an IonRecall-FITTree-V2 checkpoint."
         )
     return config
 
@@ -476,7 +476,7 @@ def predict_batch(
     for position, (record, first_text) in enumerate(
         zip(records, first_texts)
     ):
-        first_graph, first_ok, first_errors = parse_fitgraph_dsl(
+        first_graph, first_ok, first_errors = parse_fittree_dsl(
             first_text
         )
         candidates = select_candidates(
@@ -540,7 +540,7 @@ def predict_batch(
 
         if repair_text:
             repaired_graph, repair_ok, repair_errors = (
-                parse_fitgraph_dsl(repair_text)
+                parse_fittree_dsl(repair_text)
             )
             if repair_ok:
                 final_graph = merge_graphs_no_delete(
@@ -701,7 +701,7 @@ def main() -> None:
     ]
     if missing_checkpoint_items:
         raise FileNotFoundError(
-            "CHECKPOINT_DIR is not a complete IonRecall-FITGraph-V2 checkpoint. "
+            "CHECKPOINT_DIR is not a complete IonRecall-FITTree-V2 checkpoint. "
             "Missing: " + ", ".join(missing_checkpoint_items)
         )
 
@@ -814,7 +814,7 @@ def main() -> None:
                         "_key": key,
                         "record": record,
                         "gold_graph": (
-                            build_fitgraph(record)
+                            build_fittree(record)
                             if isinstance(
                                 record.get("corrected_triplet"),
                                 list,
@@ -884,7 +884,7 @@ def main() -> None:
                         "infer_result",
                         [],
                     )
-                    reconstructed = build_fitgraph(temporary)
+                    reconstructed = build_fittree(temporary)
                     candidate_row = {
                         "_index": index,
                         "_key": key,
@@ -905,7 +905,7 @@ def main() -> None:
                         "_index": index,
                         "_key": key,
                         "record": record,
-                        "gold_graph": build_fitgraph(record),
+                        "gold_graph": build_fittree(record),
                         "first_graph": reconstructed,
                         "predicted_graph": reconstructed,
                         "parse_ok": bool(strict_row.get("parse_ok")),
