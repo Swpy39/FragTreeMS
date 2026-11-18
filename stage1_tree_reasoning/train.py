@@ -3,7 +3,7 @@ from __future__ import annotations
 MODEL_NAME_OR_PATH = "/hpc2hdd/home/fye374/models/Qwen2.5-14B-Instruct"
 
 TRAIN_DATA_FILE = "./data/aromatic_hydrocarbon/train.jsonl"
-OUTPUT_DIR = "./outputs/aromatic_hydrocarbon/Qwen25-14B_44_fitgraph"
+OUTPUT_DIR = "./outputs/aromatic_hydrocarbon/Qwen25-14B_44_fittree"
 
 print(OUTPUT_DIR)
 
@@ -91,7 +91,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from fittree import (
     build_chat_prompt,
-    build_fitgraph,
+    build_fittree,
     build_repair_chat_prompt,
     corrupt_graph_for_repair,
     graph_to_dsl,
@@ -411,7 +411,7 @@ def prepare_training_examples(
     rng = random.Random(RANDOM_SEED)
 
     for index, record in enumerate(records):
-        graph = build_fitgraph(record)
+        graph = build_fittree(record)
         direct = tokenize_training_example(
             tokenizer,
             record,
@@ -978,7 +978,7 @@ def save_recall_checkpoint(
     )
 
     config = {
-        "architecture": "IonRecall-FITGraph-V2",
+        "architecture": "IonRecall-FITTree-V2",
         "model_name_or_path": MODEL_NAME_OR_PATH,
         "hidden_size": raw_model.hidden_size,
         "ion_head_max_mz": ION_HEAD_MAX_MZ,
@@ -988,7 +988,7 @@ def save_recall_checkpoint(
         "ion_count_expansion": ION_COUNT_EXPANSION,
         "ion_count_margin": ION_COUNT_MARGIN,
         "max_auxiliary_ion_candidates": MAX_AUXILIARY_ION_CANDIDATES,
-        "graph_format": "ion_first_fitgraph_v2",
+        "graph_format": "ion_first_fittree_v2",
         "metadata": metadata,
     }
     (directory / "model_config.json").write_text(
@@ -1038,9 +1038,9 @@ def main() -> None:
             [
                 {
                     "record": record,
-                    "fitgraph": build_fitgraph(record),
+                    "fittree": build_fittree(record),
                     "target_dsl": graph_to_dsl(
-                        build_fitgraph(record)
+                        build_fittree(record)
                     ),
                 }
                 for record in train_records
