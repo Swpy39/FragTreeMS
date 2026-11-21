@@ -54,44 +54,48 @@ The tables compare direct and triplet-input settings, baseline predictors and fu
 
 <p><strong>Direct versus triplet-input settings.</strong> Base-peak accuracy and cosine similarity are shown side by side for each backbone.</p>
 
-<table width="100%" cellpadding="3" cellspacing="0">
+<div align="center">
+<table align="center" width="100%" cellpadding="3" cellspacing="0">
 <thead>
 <tr>
-<th><small>System / model</small></th>
-<th align="center"><small>Direct · base-peak</small></th>
-<th align="center"><small>Direct · cosine</small></th>
-<th align="center"><small>Triplets · base-peak</small></th>
-<th align="center"><small>Triplets · cosine</small></th>
+<th align="center" nowrap><small>System&nbsp;/&nbsp;model</small></th>
+<th align="center" nowrap><small>Direct&nbsp;·&nbsp;base&#8209;peak</small></th>
+<th align="center" nowrap><small>Direct&nbsp;·&nbsp;cosine</small></th>
+<th align="center" nowrap><small>Triplets&nbsp;·&nbsp;base&#8209;peak</small></th>
+<th align="center" nowrap><small>Triplets&nbsp;·&nbsp;cosine</small></th>
 </tr>
 </thead>
 <tbody>
-<tr><td><small>GPT · GPT-5.5</small></td><td align="center"><small>0.320261 ± 0.019608</small></td><td align="center"><small>0.580188 ± 0.011335</small></td><td align="center"><small>0.278867 ± 0.003774</small></td><td align="center"><small>0.554586 ± 0.001029</small></td></tr>
-<tr><td><small>DeepSeek · DeepSeek-V4-Pro</small></td><td align="center"><small>0.455338 ± 0.021010</small></td><td align="center"><small>0.652453 ± 0.003365</small></td><td align="center"><small>0.411765 ± 0.006536</small></td><td align="center"><small>0.622592 ± 0.004737</small></td></tr>
-<tr><td><small>Local · Qwen3-8B</small></td><td align="center"><small>0.039216 ± 0.006536</small></td><td align="center"><small>0.123006 ± 0.004331</small></td><td align="center"><small>0.209150 ± 0.013072</small></td><td align="center"><small>0.190229 ± 0.001188</small></td></tr>
-<tr><td><small>Local · Llama3.1-8B</small></td><td align="center"><small>0.023965 ± 0.013606</small></td><td align="center"><small>0.105070 ± 0.004642</small></td><td align="center"><small>0.067538 ± 0.007547</small></td><td align="center"><small>0.153230 ± 0.005393</small></td></tr>
-<tr><td><small>Local · Qwen2.5-14B</small></td><td align="center"><small>0.028322 ± 0.003774</small></td><td align="center"><small>0.122590 ± 0.005339</small></td><td align="center"><small>0.034858 ± 0.007547</small></td><td align="center"><small>0.113549 ± 0.006863</small></td></tr>
+<tr><td align="center" nowrap><small>GPT&nbsp;·&nbsp;GPT&#8209;5.5</small></td><td align="center" nowrap><small>0.320261&nbsp;±&nbsp;0.019608</small></td><td align="center" nowrap><small>0.580188&nbsp;±&nbsp;0.011335</small></td><td align="center" nowrap><small>0.278867&nbsp;±&nbsp;0.003774</small></td><td align="center" nowrap><small>0.554586&nbsp;±&nbsp;0.001029</small></td></tr>
+<tr><td align="center" nowrap><small>DeepSeek&nbsp;·&nbsp;DeepSeek&#8209;V4&#8209;Pro</small></td><td align="center" nowrap><small>0.455338&nbsp;±&nbsp;0.021010</small></td><td align="center" nowrap><small>0.652453&nbsp;±&nbsp;0.003365</small></td><td align="center" nowrap><small>0.411765&nbsp;±&nbsp;0.006536</small></td><td align="center" nowrap><small>0.622592&nbsp;±&nbsp;0.004737</small></td></tr>
+<tr><td align="center" nowrap><small>Local&nbsp;·&nbsp;Qwen3&#8209;8B</small></td><td align="center" nowrap><small>0.039216&nbsp;±&nbsp;0.006536</small></td><td align="center" nowrap><small>0.123006&nbsp;±&nbsp;0.004331</small></td><td align="center" nowrap><small>0.209150&nbsp;±&nbsp;0.013072</small></td><td align="center" nowrap><small>0.190229&nbsp;±&nbsp;0.001188</small></td></tr>
+<tr><td align="center" nowrap><small>Local&nbsp;·&nbsp;Llama3.1&#8209;8B</small></td><td align="center" nowrap><small>0.023965&nbsp;±&nbsp;0.013606</small></td><td align="center" nowrap><small>0.105070&nbsp;±&nbsp;0.004642</small></td><td align="center" nowrap><small>0.067538&nbsp;±&nbsp;0.007547</small></td><td align="center" nowrap><small>0.153230&nbsp;±&nbsp;0.005393</small></td></tr>
+<tr><td align="center" nowrap><small>Local&nbsp;·&nbsp;Qwen2.5&#8209;14B</small></td><td align="center" nowrap><small>0.028322&nbsp;±&nbsp;0.003774</small></td><td align="center" nowrap><small>0.122590&nbsp;±&nbsp;0.005339</small></td><td align="center" nowrap><small>0.034858&nbsp;±&nbsp;0.007547</small></td><td align="center" nowrap><small>0.113549&nbsp;±&nbsp;0.006863</small></td></tr>
 </tbody>
 </table>
+</div>
 
 <p><strong>Baselines and full-model results.</strong></p>
 
-<table width="100%" cellpadding="3" cellspacing="0">
+<div align="center">
+<table align="center" width="100%" cellpadding="3" cellspacing="0">
 <thead>
 <tr>
-<th><small>System</small></th>
-<th><small>Model / setting</small></th>
-<th align="center"><small>Base-peak accuracy</small></th>
-<th align="center"><small>Cosine</small></th>
+<th align="center" nowrap><small>System</small></th>
+<th align="center" nowrap><small>Model&nbsp;/&nbsp;setting</small></th>
+<th align="center" nowrap><small>Base&#8209;peak&nbsp;accuracy</small></th>
+<th align="center" nowrap><small>Cosine</small></th>
 </tr>
 </thead>
 <tbody>
-<tr><td><small>Baseline</small></td><td><small>NEIMS</small></td><td align="center"><small>0.457516 ± 0.017292</small></td><td align="center"><small>0.737847 ± 0.001619</small></td></tr>
-<tr><td><small>Baseline</small></td><td><small>CFM-ID</small></td><td align="center"><small>0.294118 ± 0.000000</small></td><td align="center"><small>0.528892 ± 0.000000</small></td></tr>
-<tr><td><small>FragTreeMS</small></td><td><small>Qwen3-8B · Full model</small></td><td align="center"><small>—</small></td><td align="center"><small>—</small></td></tr>
-<tr><td><small>FragTreeMS</small></td><td><small>Llama3.1-8B · Full model</small></td><td align="center"><small>0.468410 ± 0.013606</small></td><td align="center"><small>0.741180 ± 0.003364</small></td></tr>
-<tr><td><small>FragTreeMS</small></td><td><small>Qwen2.5-14B · Full model</small></td><td align="center"><small>—</small></td><td align="center"><small>—</small></td></tr>
+<tr><td align="center" nowrap><small>Baseline</small></td><td align="center" nowrap><small>NEIMS</small></td><td align="center" nowrap><small>0.457516&nbsp;±&nbsp;0.017292</small></td><td align="center" nowrap><small>0.737847&nbsp;±&nbsp;0.001619</small></td></tr>
+<tr><td align="center" nowrap><small>Baseline</small></td><td align="center" nowrap><small>CFM&#8209;ID</small></td><td align="center" nowrap><small>0.294118&nbsp;±&nbsp;0.000000</small></td><td align="center" nowrap><small>0.528892&nbsp;±&nbsp;0.000000</small></td></tr>
+<tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>—</small></td><td align="center" nowrap><small>—</small></td></tr>
+<tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Llama3.1&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.468410&nbsp;±&nbsp;0.013606</small></td><td align="center" nowrap><small>0.741180&nbsp;±&nbsp;0.003364</small></td></tr>
+<tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>—</small></td><td align="center" nowrap><small>—</small></td></tr>
 </tbody>
 </table>
+</div>
 
 <a id="method-workflow"></a>
 ## ⚙️ Method workflow
