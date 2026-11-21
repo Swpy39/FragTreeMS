@@ -5,80 +5,33 @@
 </p>
 
 <p align="center">
-  <a href="#overview">Overview</a> &nbsp;·&nbsp;
-  <a href="#method-workflow">Method</a> &nbsp;·&nbsp;
-  <a href="#visualization">Interactive demo</a> &nbsp;·&nbsp;
-  <a href="#chs-benchmark-and-results">CHS results</a>
+  <a href="#overview">🧭 Overview</a> &nbsp;·&nbsp;
+  <a href="#chs-benchmark-results">📊 CHS results</a> &nbsp;·&nbsp;
+  <a href="#method-workflow">⚙️ Method</a> &nbsp;·&nbsp;
+  <a href="#visualization">🔬 Interactive demo</a>
 </p>
 
-<p align="center"><strong>🧪 New experiment: We add a CHS benchmark beyond the four hydrocarbon classes; results are presented in the final section.</strong></p>
+<a id="overview"></a>
+## 🧭 Overview
 
-## Overview
-
-FragTreeMS represents each product ion as a source-mechanism-product relation in an explicit fragmentation tree. Candidate-guided review repairs missing ions and pathways; the complete molecular-to-ion pathway then conditions intensity prediction through Path Cross-Attention and Inter-Peak Interaction.
+FragTreeMS makes EI ion formation explicit as a source-mechanism-product fragmentation tree. Candidate-guided repair refines the tree, and each complete pathway conditions intensity prediction through Path Cross-Attention and Inter-Peak Interaction.
 
 <p align="center">
   <a href="./Images/Main.pdf">
     <img src="./Images/Main.svg"
          alt="FragTreeMS framework: fragmentation-tree generation and repair followed by pathway-conditioned intensity prediction"
-         width="60%">
+         width="80%">
   </a>
 </p>
 
 <p align="center">
   <strong>Figure 1 | Overview of the FragTreeMS framework.</strong>
-
 </p>
 
-## Method workflow
+<a id="chs-example"></a>
+## 🧪 CHS example
 
-1. **Annotation curation.** Initial mechanism annotations are generated with GPT-4.1, refined in a second GPT-4.1 pass, completed and corrected with GPT-5, and then reviewed manually. The released annotations are therefore curated records rather than unreviewed model outputs.
-2. **Fragmentation tree reasoning and repair.** A language model first generates a fragmentation tree containing the predicted ion inventory, structural fragments, relations between precursor and product ions and mechanism labels. Diagnostic ion candidates then guide a self-review pass that recovers plausible omissions while preserving the explicit tree structure.
-3. **Intensity prediction.** The repaired tree and its complete ion formation pathways are encoded to predict normalized EI peak intensities.
-
-## Repository structure
-
-```text
-FragTreeMS/
-├── annotation_pipeline/
-│   ├── generation/
-│   ├── refinement/
-│   └── finalization/
-├── stage1_tree_generation/
-├── stage2_intensity_prediction/
-├── data/
-│   ├── acyclic_alkane_data/
-│   ├── alkene_data/
-│   ├── cycloalkane_data/
-│   └── aromatic_hydrocarbon_data/
-├── Images/
-├── README.md
-└── requirements.txt
-```
-
-| Directory | Description |
-| --- | --- |
-| `annotation_pipeline/` | Scripts for initial annotation generation, refinement and final correction. |
-| `stage1_tree_generation/` | Training and inference code for fragmentation tree generation and self-review repair. |
-| `stage2_intensity_prediction/` | Training and inference code for pathway-conditioned intensity prediction. |
-| `data/` | Example of annotated data format. |
-| `Images/` | Images for this project. |
-
-## Current scope
-
-The mechanism vocabulary included in this release spans the principal ion formation and fragmentation processes commonly observed in EI mass spectrometry. The main validation datasets focus on 70 eV electron ionization (EI) mass spectra from four hydrocarbon classes: acyclic alkanes, alkenes, cycloalkanes and aromatic hydrocarbons. A supplementary CHS evaluation extends the reported benchmark to sulfur-containing molecules; its results and a worked example are presented at the top of this README.
-
-The tree reasoning experiments use Qwen3-8B, Llama3.1-8B-Instruct and Qwen2.5-14B-Instruct as alternative backbone models. The intensity model uses the same pathway representation and evaluation protocol across backbones.
-
-## Visualization
-
-FragTreeMS provides molecule-level visualizations of the inferred fragmentation tree, repaired product ions, complete formation pathways and predicted EI spectrum. The interactive demonstration is available at [https://pec.cup.edu.cn/FragTreeMS](https://pec.cup.edu.cn/FragTreeMS).
-
-![Conceptual overview of FragTreeMS](./Images/visualization.png)
-
-## CHS benchmark and results
-
-**A sulfur-containing evaluation beyond the four hydrocarbon classes.** The CHS results below compare direct spectrum prediction, triplet-based input, baseline predictors and the full FragTreeMS model.
+A representative sulfur-containing molecule, its EI spectrum and its mechanism-coloured fragmentation tree are shown below.
 
 <p align="center">
   <a href="./Images/Figures-S1.pdf">
@@ -90,10 +43,14 @@ FragTreeMS provides molecule-level visualizations of the inferred fragmentation 
 
 <p align="center">
   <strong>Figure S1 | A representative CHS molecule and its EI spectrum, mechanism-coloured fragmentation tree and assigned ion pathways.</strong>
-
 </p>
 
-### CHS spectrum-prediction results
+<a id="chs-benchmark-results"></a>
+## 📊 CHS benchmark results
+
+The tables compare direct and triplet-input settings, baseline predictors and full FragTreeMS models.
+
+### 📈 Spectrum-prediction metrics
 
 <p><strong>Direct versus triplet-input settings.</strong> Base-peak accuracy and cosine similarity are shown side by side for each backbone.</p>
 
@@ -135,3 +92,51 @@ FragTreeMS provides molecule-level visualizations of the inferred fragmentation 
 <tr><td><small>FragTreeMS</small></td><td><small>Qwen2.5-14B · Full model</small></td><td align="center"><small>—</small></td><td align="center"><small>—</small></td></tr>
 </tbody>
 </table>
+
+<a id="method-workflow"></a>
+## ⚙️ Method workflow
+
+1. **Annotation curation.** Initial mechanism annotations are generated with GPT-4.1, refined in a second GPT-4.1 pass, completed and corrected with GPT-5, and then reviewed manually. The released annotations are therefore curated records rather than unreviewed model outputs.
+2. **Fragmentation tree reasoning and repair.** A language model first generates a fragmentation tree containing the predicted ion inventory, structural fragments, relations between precursor and product ions and mechanism labels. Diagnostic ion candidates then guide a self-review pass that recovers plausible omissions while preserving the explicit tree structure.
+3. **Intensity prediction.** The repaired tree and its complete ion formation pathways are encoded to predict normalized EI peak intensities.
+
+## 📂 Repository structure
+
+```text
+FragTreeMS/
+├── annotation_pipeline/
+│   ├── generation/
+│   ├── refinement/
+│   └── finalization/
+├── stage1_tree_generation/
+├── stage2_intensity_prediction/
+├── data/
+│   ├── acyclic_alkane_data/
+│   ├── alkene_data/
+│   ├── cycloalkane_data/
+│   └── aromatic_hydrocarbon_data/
+├── Images/
+├── README.md
+└── requirements.txt
+```
+
+| Directory | Description |
+| --- | --- |
+| `annotation_pipeline/` | Scripts for initial annotation generation, refinement and final correction. |
+| `stage1_tree_generation/` | Training and inference code for fragmentation tree generation and self-review repair. |
+| `stage2_intensity_prediction/` | Training and inference code for pathway-conditioned intensity prediction. |
+| `data/` | Example of annotated data format. |
+| `Images/` | Images for this project. |
+
+## 🔎 Current scope
+
+The mechanism vocabulary included in this release spans the principal ion formation and fragmentation processes commonly observed in EI mass spectrometry. The main validation datasets focus on 70 eV electron ionization (EI) mass spectra from four hydrocarbon classes: acyclic alkanes, alkenes, cycloalkanes and aromatic hydrocarbons. A supplementary CHS evaluation extends the reported benchmark to sulfur-containing molecules; its results and a worked example are presented at the top of this README.
+
+The tree reasoning experiments use Qwen3-8B, Llama3.1-8B-Instruct and Qwen2.5-14B-Instruct as alternative backbone models. The intensity model uses the same pathway representation and evaluation protocol across backbones.
+
+<a id="visualization"></a>
+## 🔬 Visualization
+
+FragTreeMS provides molecule-level visualizations of the inferred fragmentation tree, repaired product ions, complete formation pathways and predicted EI spectrum. The interactive demonstration is available at [https://pec.cup.edu.cn/FragTreeMS](https://pec.cup.edu.cn/FragTreeMS).
+
+![Conceptual overview of FragTreeMS](./Images/visualization.png)
