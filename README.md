@@ -1,55 +1,79 @@
-# FragTreeMS
+<h1 align="center">FragTreeMS</h1>
 
 <p align="center">
-  <strong>Mechanism-grounded fragmentation trees for interpretable EI mass spectrum prediction</strong>
+  <strong><em>Mechanism-grounded fragmentation trees enable explicit chemical reasoning for electron ionization mass spectrum prediction</em></strong>
 </p>
 
 <p align="center">
   <a href="#chs-benchmark">🧪 CHS benchmark</a> &nbsp;·&nbsp;
-  <a href="./Images/Figures-S1.pdf">📄 Figure S1</a> &nbsp;·&nbsp;
   <a href="#method-workflow">⚙️ Method</a> &nbsp;·&nbsp;
   <a href="#visualization">🔬 Interactive demo</a>
 </p>
 
 ## 🧪 CHS benchmark
 
-**A sulfur-containing evaluation beyond the four hydrocarbon classes.** This benchmark reports EI-MS prediction results for CHS molecules and a worked example of the corresponding fragmentation analysis.
+**A sulfur-containing evaluation beyond the four hydrocarbon classes.** The CHS results below compare direct spectrum prediction, triplet-based input, baseline predictors and the full FragTreeMS model.
 
 <p align="center">
   <a href="./Images/Figures-S1.pdf">
-    <strong>📄 Open Figure S1 — CHS fragmentation example (PDF)</strong>
+    <img src="./Images/Figures-S1-preview.png"
+         alt="Representative CHS molecule, EI spectrum, fragmentation tree and mechanism legend"
+         width="90%">
   </a>
+</p>
+
+<p align="center">
+  <strong>Figure S1 | A representative CHS molecule and its EI spectrum, mechanism-coloured fragmentation tree and assigned ion pathways.</strong>
+  <br>
+  <a href="./Images/Figures-S1.pdf">Open the full-resolution PDF</a>
 </p>
 
 ### CHS spectrum-prediction results
 
-| System | Model | Setting | Base-peak accuracy | Cosine |
-|:--|:--|:--|--:|--:|
-| GPT | GPT-5.5 | Direct | 0.320261 ± 0.019608 | 0.580188 ± 0.011335 |
-| GPT | GPT-5.5 | Triplets | 0.278867 ± 0.003774 | 0.554586 ± 0.001029 |
-| DeepSeek | DeepSeek-V4-Pro | Direct | 0.455338 ± 0.021010 | 0.652453 ± 0.003365 |
-| DeepSeek | DeepSeek-V4-Pro | Triplets | 0.411765 ± 0.006536 | 0.622592 ± 0.004737 |
-| Local | Qwen3-8B | Direct | 0.039216 ± 0.006536 | 0.123006 ± 0.004331 |
-| Local | Qwen3-8B | Triplets | 0.209150 ± 0.013072 | 0.190229 ± 0.001188 |
-| Local | Llama3.1-8B | Direct | 0.023965 ± 0.013606 | 0.105070 ± 0.004642 |
-| Local | Llama3.1-8B | Triplets | 0.067538 ± 0.007547 | 0.153230 ± 0.005393 |
-| Local | Qwen2.5-14B | Direct | 0.028322 ± 0.003774 | 0.122590 ± 0.005339 |
-| Local | Qwen2.5-14B | Triplets | 0.034858 ± 0.007547 | 0.113549 ± 0.006863 |
-| Baseline | NEIMS | — | 0.457516 ± 0.017292 | 0.737847 ± 0.001619 |
-| Baseline | CFM-ID | — | 0.294118 ± 0.000000 | 0.528892 ± 0.000000 |
-| FragTreeMS | Qwen3-8B | Full model | — | — |
-| FragTreeMS | Llama3.1-8B | Full model | 0.468410 ± 0.013606 | 0.741180 ± 0.003364 |
-| FragTreeMS | Qwen2.5-14B | Full model | — | — |
+<p><strong>Direct versus triplet-input settings.</strong> Base-peak accuracy and cosine similarity are shown side by side for each backbone.</p>
 
-FragTreeMS is a mechanism-grounded framework for interpretable electron ionization (EI) mass spectrum prediction. It generates and repairs explicit fragmentation trees and uses complete ion formation pathways to predict peak intensities.
+<table width="100%" cellpadding="3" cellspacing="0">
+<thead>
+<tr>
+<th><small>System / model</small></th>
+<th align="center"><small>Direct · base-peak</small></th>
+<th align="center"><small>Direct · cosine</small></th>
+<th align="center"><small>Triplets · base-peak</small></th>
+<th align="center"><small>Triplets · cosine</small></th>
+</tr>
+</thead>
+<tbody>
+<tr><td><small>GPT · GPT-5.5</small></td><td align="center"><small>0.320261 ± 0.019608</small></td><td align="center"><small>0.580188 ± 0.011335</small></td><td align="center"><small>0.278867 ± 0.003774</small></td><td align="center"><small>0.554586 ± 0.001029</small></td></tr>
+<tr><td><small>DeepSeek · DeepSeek-V4-Pro</small></td><td align="center"><small>0.455338 ± 0.021010</small></td><td align="center"><small>0.652453 ± 0.003365</small></td><td align="center"><small>0.411765 ± 0.006536</small></td><td align="center"><small>0.622592 ± 0.004737</small></td></tr>
+<tr><td><small>Local · Qwen3-8B</small></td><td align="center"><small>0.039216 ± 0.006536</small></td><td align="center"><small>0.123006 ± 0.004331</small></td><td align="center"><small>0.209150 ± 0.013072</small></td><td align="center"><small>0.190229 ± 0.001188</small></td></tr>
+<tr><td><small>Local · Llama3.1-8B</small></td><td align="center"><small>0.023965 ± 0.013606</small></td><td align="center"><small>0.105070 ± 0.004642</small></td><td align="center"><small>0.067538 ± 0.007547</small></td><td align="center"><small>0.153230 ± 0.005393</small></td></tr>
+<tr><td><small>Local · Qwen2.5-14B</small></td><td align="center"><small>0.028322 ± 0.003774</small></td><td align="center"><small>0.122590 ± 0.005339</small></td><td align="center"><small>0.034858 ± 0.007547</small></td><td align="center"><small>0.113549 ± 0.006863</small></td></tr>
+</tbody>
+</table>
 
-<p align="center">
-  <img src="./Images/Figure1.png"
-       alt="Conceptual overview of FragTreeMS"
-       width="70%">
-</p>
+<p><strong>Baselines and full-model results.</strong></p>
 
-**Figure 1 | Conceptual overview of FragTreeMS.** Conventional structure-to-spectrum methods predict spectral patterns without explicitly representing the ion formation process. FragTreeMS instead organizes fragmentation chemistry as source-mechanism-product relations, repairs plausible omissions in the resulting tree and uses the complete pathway from the molecular root to each product ion for intensity prediction.
+<table width="100%" cellpadding="3" cellspacing="0">
+<thead>
+<tr>
+<th><small>System</small></th>
+<th><small>Model / setting</small></th>
+<th align="center"><small>Base-peak accuracy</small></th>
+<th align="center"><small>Cosine</small></th>
+</tr>
+</thead>
+<tbody>
+<tr><td><small>Baseline</small></td><td><small>NEIMS</small></td><td align="center"><small>0.457516 ± 0.017292</small></td><td align="center"><small>0.737847 ± 0.001619</small></td></tr>
+<tr><td><small>Baseline</small></td><td><small>CFM-ID</small></td><td align="center"><small>0.294118 ± 0.000000</small></td><td align="center"><small>0.528892 ± 0.000000</small></td></tr>
+<tr><td><small>FragTreeMS</small></td><td><small>Qwen3-8B · Full model</small></td><td align="center"><small>—</small></td><td align="center"><small>—</small></td></tr>
+<tr><td><small>FragTreeMS</small></td><td><small>Llama3.1-8B · Full model</small></td><td align="center"><small>0.468410 ± 0.013606</small></td><td align="center"><small>0.741180 ± 0.003364</small></td></tr>
+<tr><td><small>FragTreeMS</small></td><td><small>Qwen2.5-14B · Full model</small></td><td align="center"><small>—</small></td><td align="center"><small>—</small></td></tr>
+</tbody>
+</table>
+
+**Reading the results.** The reported FragTreeMS Llama3.1-8B full model has the highest listed means: 0.468410 for base-peak accuracy and 0.741180 for cosine. The differences from NEIMS are modest (+0.010894 and +0.003333), and the reported mean ± s.d. ranges overlap; these results alone do not establish a statistically significant improvement. Triplet input improves both metrics for local Qwen3-8B and Llama3.1-8B, whereas GPT-5.5 and DeepSeek-V4-Pro score lower in the Triplets setting than in Direct. Qwen2.5-14B shows a small base-peak gain but a lower cosine score. The effect of triplet input therefore depends on the backbone.
+
+<small>Values are mean ± s.d. for repeated runs where available; “—” indicates results not yet reported. NEIMS is summarized across three seeds at 4,000 training steps. CFM-ID is a single fixed evaluation, so its zero s.d. does not estimate between-run variability.</small>
 
 ## 🧭 Overview
 
@@ -59,12 +83,25 @@ FragTreeMS introduces an explicit intermediate representation. For each molecule
 
 The repaired tree is not used only as a post hoc explanation. The complete pathway from the molecular root to each retained product ion enters the intensity model directly. Path Cross-Attention encodes the ion-specific formation history, and Inter-Peak Interaction models dependencies among the retained ions before non-negative, base-peak-normalized intensities are predicted.
 
+<p align="center">
+  <a href="./Images/Main.pdf">
+    <img src="./Images/Main-preview.png"
+         alt="FragTreeMS framework: fragmentation-tree generation and repair followed by pathway-conditioned intensity prediction"
+         width="100%">
+  </a>
+</p>
+
+<p align="center">
+  <strong>Figure 1 | Overview of the FragTreeMS framework.</strong>
+  <br>
+  <a href="./Images/Main.pdf">Open the framework figure as a PDF</a>
+</p>
+
 ## ⚙️ Method workflow
 
 1. **Annotation curation.** Initial mechanism annotations are generated with GPT-4.1, refined in a second GPT-4.1 pass, completed and corrected with GPT-5, and then reviewed manually. The released annotations are therefore curated records rather than unreviewed model outputs.
 2. **Fragmentation tree reasoning and repair.** A language model first generates a fragmentation tree containing the predicted ion inventory, structural fragments, relations between precursor and product ions and mechanism labels. Diagnostic ion candidates then guide a self-review pass that recovers plausible omissions while preserving the explicit tree structure.
 3. **Intensity prediction.** The repaired tree and its complete ion formation pathways are encoded to predict normalized EI peak intensities.
-
 
 ## 📂 Repository structure
 
@@ -86,13 +123,13 @@ FragTreeMS/
 └── requirements.txt
 ```
 
-| Directory                      | Description                                                  |
-| ------------------------------ | ------------------------------------------------------------ |
-| `annotation_pipeline/`         | Scripts for initial annotation generation, refinement and final correction. |
-| `stage1_tree_generation/`      | Training and inference code for fragmentation tree generation and self-review repair. |
+| Directory | Description |
+| --- | --- |
+| `annotation_pipeline/` | Scripts for initial annotation generation, refinement and final correction. |
+| `stage1_tree_generation/` | Training and inference code for fragmentation tree generation and self-review repair. |
 | `stage2_intensity_prediction/` | Training and inference code for pathway-conditioned intensity prediction. |
-| `data/`                        | Example of annotated data format. |
-| `Images/`                      | Images for this project. |
+| `data/` | Example of annotated data format. |
+| `Images/` | Images for this project. |
 
 ## 🧪 Current scope
 
@@ -105,4 +142,3 @@ The tree reasoning experiments use Qwen3-8B, Llama3.1-8B-Instruct and Qwen2.5-14
 FragTreeMS provides molecule-level visualizations of the inferred fragmentation tree, repaired product ions, complete formation pathways and predicted EI spectrum. The interactive demonstration is available at [https://pec.cup.edu.cn/FragTreeMS](https://pec.cup.edu.cn/FragTreeMS).
 
 ![Conceptual overview of FragTreeMS](./Images/visualization.png)
-
