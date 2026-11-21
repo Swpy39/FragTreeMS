@@ -71,17 +71,9 @@
 </tbody>
 </table>
 
-**Reading the results.** The reported FragTreeMS Llama3.1-8B full model has the highest listed means: 0.468410 for base-peak accuracy and 0.741180 for cosine. The differences from NEIMS are modest (+0.010894 and +0.003333), and the reported mean ± s.d. ranges overlap; these results alone do not establish a statistically significant improvement. Triplet input improves both metrics for local Qwen3-8B and Llama3.1-8B, whereas GPT-5.5 and DeepSeek-V4-Pro score lower in the Triplets setting than in Direct. Qwen2.5-14B shows a small base-peak gain but a lower cosine score. The effect of triplet input therefore depends on the backbone.
-
-<small>Values are mean ± s.d. for repeated runs where available; “—” indicates results not yet reported. NEIMS is summarized across three seeds at 4,000 training steps. CFM-ID is a single fixed evaluation, so its zero s.d. does not estimate between-run variability.</small>
-
 ## 🧭 Overview
 
-Most computational approaches formulate EI mass spectrum prediction as a direct mapping from molecular structure to peak intensity. Although such models can reproduce spectral patterns, the chemical processes that connect a molecule to its product ions remain implicit.
-
-FragTreeMS introduces an explicit intermediate representation. For each molecule, the framework constructs a fragmentation tree composed of source-mechanism-product relations. A source can be a structural fragment or an observed precursor ion, the mechanism is selected from a controlled EI fragmentation vocabulary, and the product records the ion formula and nominal mass. Candidate-guided self-review then identifies and repairs plausible omissions before intensity modelling.
-
-The repaired tree is not used only as a post hoc explanation. The complete pathway from the molecular root to each retained product ion enters the intensity model directly. Path Cross-Attention encodes the ion-specific formation history, and Inter-Peak Interaction models dependencies among the retained ions before non-negative, base-peak-normalized intensities are predicted.
+FragTreeMS represents each product ion as a source-mechanism-product relation in an explicit fragmentation tree. Candidate-guided review repairs missing ions and pathways; the complete molecular-to-ion pathway then conditions intensity prediction through Path Cross-Attention and Inter-Peak Interaction.
 
 <p align="center">
   <a href="./Images/Main.pdf">
