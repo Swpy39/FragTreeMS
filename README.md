@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="./Images/Figures-S1.pdf">
-    <img src="./Images/Figures-S1-preview.png"
+    <img src="./Images/Figures-S1.svg"
          alt="Representative CHS molecule, EI spectrum, fragmentation tree and mechanism legend"
          width="90%">
   </a>
@@ -77,7 +77,7 @@ FragTreeMS represents each product ion as a source-mechanism-product relation in
 
 <p align="center">
   <a href="./Images/Main.pdf">
-    <img src="./Images/Main-preview.png"
+    <img src="./Images/Main.svg"
          alt="FragTreeMS framework: fragmentation-tree generation and repair followed by pathway-conditioned intensity prediction"
          width="100%">
   </a>
