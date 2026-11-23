@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import argparse
 import csv
 import hashlib
@@ -26,7 +29,6 @@ except Exception as exc:
         "RDKit is required for the Morgan-fingerprint global molecular branch."
     ) from exc
 from torch.utils.data import DataLoader, Dataset
-
 
 MZ_RE = re.compile(r"\(m/z\s*([0-9]+(?:\.[0-9]+)?)\)", flags=re.IGNORECASE)
 PRECURSOR_MZ_RE = re.compile(r"^precursor_mz:\s*([0-9]+(?:\.[0-9]+)?)", flags=re.IGNORECASE)
@@ -78,12 +80,10 @@ TYPE_TO_NAME = {
     TYPE_ORPHAN_EDGE: "ORPHAN_EDGE",
 }
 
-
 def set_seed(seed: int) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-
 
 def setup_cuda_inference() -> None:
     if torch.cuda.is_available():
@@ -94,7 +94,6 @@ def setup_cuda_inference() -> None:
             torch.set_float32_matmul_precision("high")
         except Exception:
             pass
-
 
 def load_json_or_jsonl(path: str) -> List[Dict[str, Any]]:
     p = Path(path)
@@ -130,7 +129,6 @@ def load_json_or_jsonl(path: str) -> List[Dict[str, Any]]:
             rows.append(obj)
     return rows
 
-
 def save_json_or_jsonl(records: List[Dict[str, Any]], path: str) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     if path.lower().endswith(".jsonl"):
@@ -141,19 +139,16 @@ def save_json_or_jsonl(records: List[Dict[str, Any]], path: str) -> None:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(records, f, ensure_ascii=False, indent=2)
 
-
 def write_json(obj: Any, path: str) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
-
 
 def parse_float(x: Any, default: float = 0.0) -> float:
     try:
         return float(str(x).strip())
     except Exception:
         return default
-
 
 def normalize_mz_value(x: Any) -> Optional[str]:
     try:
@@ -162,10 +157,8 @@ def normalize_mz_value(x: Any) -> Optional[str]:
     except Exception:
         return None
 
-
 def format_mz_key(mz: float) -> str:
     return str(int(mz)) if float(mz).is_integer() else str(mz)
-
 
 def parse_mz_from_product(product_ion: Any) -> Optional[str]:
     if not isinstance(product_ion, str):
@@ -175,7 +168,6 @@ def parse_mz_from_product(product_ion: Any) -> Optional[str]:
         return None
     return normalize_mz_value(m.group(1))
 
-
 def parse_precursor_mz(precursor: Any) -> Optional[str]:
     if not isinstance(precursor, str):
         return None
@@ -184,12 +176,10 @@ def parse_precursor_mz(precursor: Any) -> Optional[str]:
         return None
     return normalize_mz_value(m.group(1))
 
-
 def normalize_triplet(x: Any) -> Optional[List[str]]:
     if isinstance(x, list) and len(x) >= 3:
         return [str(x[0]).strip(), str(x[1]).strip(), str(x[2]).strip()]
     return None
-
 
 def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
     for key in (
@@ -207,7 +197,6 @@ def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
         if all(isinstance(item, list) and len(item) >= 3 for item in value):
             return value
 
-
         for candidate in value:
             if (
                 isinstance(candidate, list)
@@ -219,7 +208,6 @@ def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
             ):
                 return candidate
     return []
-
 
 def extract_intensity_value(record: Dict[str, Any]) -> Any:
     for key in (
@@ -233,7 +221,6 @@ def extract_intensity_value(record: Dict[str, Any]) -> Any:
         if key in record and record[key] is not None:
             return record[key]
     return {}
-
 
 def normalize_intensity_mapping(value: Any) -> Dict[str, float]:
     result: Dict[str, float] = {}
@@ -266,7 +253,6 @@ def normalize_intensity_mapping(value: Any) -> Dict[str, float]:
             result[normalized_mz] = parse_float(intensity, 0.0)
     return result
 
-
 def smiles_to_morgan_fingerprint(
     smiles: Any,
     *,
@@ -286,7 +272,6 @@ def smiles_to_morgan_fingerprint(
     DataStructs.ConvertToNumpyArray(bit_vector, array)
     return array.tolist()
 
-
 def normalize_prediction_by_base_peak(
     prediction: torch.Tensor,
     peak_mask: torch.Tensor,
@@ -296,16 +281,13 @@ def normalize_prediction_by_base_peak(
     maximum = masked.max(dim=1, keepdim=True).values.clamp_min(eps)
     return (masked / maximum) * peak_mask.float()
 
-
 def stable_hash_token(token: str, vocab_size: int) -> int:
     h = hashlib.md5(token.encode("utf-8")).hexdigest()
     return int(h, 16) % (vocab_size - 1) + 1
 
-
 def _prefixed_general_tokens(text: Any, namespace: str) -> List[str]:
     values = GENERAL_TOKEN_RE.findall(str(text))
     return [f"{namespace}::{token.lower()}" for token in values]
-
 
 def _smiles_tokens(smiles: Any) -> List[str]:
     text = str(smiles or "").strip()
@@ -314,11 +296,9 @@ def _smiles_tokens(smiles: Any) -> List[str]:
         values = list(text)
     return [f"smiles::{token}" for token in values]
 
-
 def _formula_tokens(formula: Any) -> List[str]:
     values = FORMULA_TOKEN_RE.findall(str(formula or ""))
     return [f"formula::{token}" for token in values]
-
 
 def structured_text_tokens(text: Any) -> List[str]:
     raw = str(text or "").strip()
@@ -367,7 +347,6 @@ def structured_text_tokens(text: Any) -> List[str]:
 
     return _prefixed_general_tokens(raw, "text") or ["special::<empty>"]
 
-
 def text_to_ids(text: str, vocab_size: int, max_words: int) -> List[int]:
     tokens = structured_text_tokens(text)
     ids = [stable_hash_token(token, vocab_size) for token in tokens[:max_words]]
@@ -383,14 +362,11 @@ def safe_get_intensity(intensity_dict: Any, mz: float, default: float = 0.0) -> 
     value = intensity_dict.get(k1, intensity_dict.get(k2, default))
     return max(0.0, min(1.0, parse_float(value, default)))
 
-
 THINK_RE = re.compile(r"<think>.*?</think>", flags=re.DOTALL | re.IGNORECASE)
 ALT_RE = re.compile(r"\s+alternatives?\s*:\s*\[.*?\]\s*$", flags=re.IGNORECASE)
 
-
 def strip_think_for_prf(x: Any) -> str:
     return THINK_RE.sub("", str(x) if x is not None else "").strip()
-
 
 def clean_source_field_for_prf(source: Any) -> str:
     s = strip_think_for_prf(source)
@@ -399,7 +375,6 @@ def clean_source_field_for_prf(source: Any) -> str:
     s = s.split("|", 1)[0].strip()
     s = ALT_RE.sub("", s).strip()
     return s
-
 
 def normalize_formula_for_prf(
     formula: str,
@@ -416,7 +391,6 @@ def normalize_formula_for_prf(
     if add_missing_charge and s and not s.endswith("+") and not s.endswith("-"):
         s += "+"
     return s
-
 
 def parse_product_ion_for_prf(
     product_ion: Any,
@@ -454,10 +428,8 @@ def parse_product_ion_for_prf(
 
     return formula, int(mz)
 
-
 def normalized_product_string_for_prf(product: Tuple[str, int]) -> str:
     return f"{product[0]} (m/z {product[1]})"
-
 
 def normalize_triplet_for_prf(
     t: Any,
@@ -492,7 +464,6 @@ def normalize_triplet_for_prf(
     product = normalized_product_string_for_prf(parsed) if parsed is not None else product_raw
     return [precursor, mechanism, product]
 
-
 def normalize_triplets_for_prf(
     xs: Any,
     *,
@@ -526,7 +497,6 @@ def normalize_triplets_for_prf(
         if nt is not None:
             out.append(nt)
     return out
-
 
 def get_gold_triplets_for_prf(
     record: Dict[str, Any],
@@ -588,7 +558,6 @@ def get_gold_triplets_for_prf(
 
     return []
 
-
 def get_pred_triplets_for_prf(
     record: Dict[str, Any],
     *,
@@ -632,9 +601,7 @@ def get_pred_triplets_for_prf(
 
     return []
 
-
 ProductUnitForPRF = Tuple[str, int]
-
 
 def extract_product_units_for_prf(triplets: List[List[str]], unique: bool = True) -> List[ProductUnitForPRF]:
     out: List[ProductUnitForPRF] = []
@@ -651,14 +618,11 @@ def extract_product_units_for_prf(triplets: List[List[str]], unique: bool = True
 
     return out
 
-
 def product_unit_to_str_for_prf(unit: ProductUnitForPRF) -> str:
     return f"{unit[0]} (m/z {unit[1]})"
 
-
 def safe_div_for_prf(a: float, b: float) -> float:
     return a / b if b > 0 else 0.0
-
 
 def compute_prf_sets_for_prf(gold_set: Set[Any], pred_set: Set[Any]) -> Dict[str, Any]:
     hit_set = gold_set & pred_set
@@ -681,7 +645,6 @@ def compute_prf_sets_for_prf(gold_set: Set[Any], pred_set: Set[Any]) -> Dict[str
         "extra_set": extra_set,
     }
 
-
 @dataclass
 class PathToken:
     text: str
@@ -689,7 +652,6 @@ class PathToken:
     mechanism_id: int
     parent_mz: float
     product_mz: float
-
 
 @dataclass
 class EdgeInfo:
@@ -702,7 +664,6 @@ class EdgeInfo:
     product_mz: float
     order: int
     triplet: List[str]
-
 
 @dataclass
 class PeakPathExample:
@@ -722,7 +683,6 @@ class PeakPathExample:
     truncated_candidate_count: int
     morgan_fp: List[float]
 
-
 def molecule_root_token(record: Dict[str, Any]) -> PathToken:
     name = str(record.get("name", "")).strip()
     smiles = str(record.get("smiles", record.get("SMILES", ""))).strip()
@@ -737,10 +697,8 @@ def molecule_root_token(record: Dict[str, Any]) -> PathToken:
         product_mz=0.0,
     )
 
-
 def edge_text_from_triplet(t: List[str]) -> str:
     return f"EDGE precursor={t[0]} mechanism={t[1]} product={t[2]}"
-
 
 def build_edge_from_triplet(
     t: List[str],
@@ -779,7 +737,6 @@ def build_edge_from_triplet(
         order=order,
         triplet=t,
     )
-
 
 def build_tree_paths(
     record: Dict[str, Any],
@@ -935,7 +892,6 @@ def build_tree_paths(
         morgan_fp=morgan_fp,
     )
 
-
 class Stage2InferDataset(Dataset):
     def __init__(
         self,
@@ -1007,7 +963,7 @@ class Stage2InferDataset(Dataset):
             else:
                 print(
                     "[Candidate truncation] high-m/z candidates were retained "
-                    "to match training; gold intensity was not used."
+                    "to match optimized training; gold intensity was not used."
                 )
 
     def __len__(self) -> int:
@@ -1015,7 +971,6 @@ class Stage2InferDataset(Dataset):
 
     def __getitem__(self, index: int) -> PeakPathExample:
         return self.examples[index]
-
 
 class Stage2InferCollator:
     def __init__(
@@ -1196,6 +1151,38 @@ class Stage2InferCollator:
             "meta": meta,
         }
 
+class BidirectionalPathMassResNet(nn.Module):
+    def __init__(self, input_dim: int, num_outputs: int, hidden_units: int = 2000,
+                 dropout_rate: float = 0.25) -> None:
+        super().__init__()
+        bottleneck = hidden_units // 2
+        self.input = nn.Linear(input_dim, hidden_units)
+        self.block_bn1 = nn.BatchNorm1d(hidden_units)
+        self.block_down = nn.Linear(hidden_units, bottleneck)
+        self.block_bn2 = nn.BatchNorm1d(bottleneck)
+        self.block_up = nn.Linear(bottleneck, hidden_units)
+        self.final_bn = nn.BatchNorm1d(hidden_units)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.output = nn.Linear(hidden_units, num_outputs)
+
+    @staticmethod
+    def _safe_batch_norm(layer: nn.BatchNorm1d, x: torch.Tensor) -> torch.Tensor:
+        if layer.training and x.shape[0] == 1:
+            return F.batch_norm(
+                x, layer.running_mean, layer.running_var,
+                layer.weight, layer.bias, training=False, momentum=0.0, eps=layer.eps,
+            )
+        return layer(x)
+
+    def forward(self, fp: torch.Tensor) -> torch.Tensor:
+        h = F.relu(self.input(fp.float()))
+        residual = self._safe_batch_norm(self.block_bn1, h)
+        residual = self.dropout(F.relu(residual))
+        residual = self.block_down(residual)
+        residual = F.relu(self._safe_batch_norm(self.block_bn2, residual))
+        residual = self.block_up(residual)
+        h = self._safe_batch_norm(self.final_bn, h + residual)
+        return self.output(F.relu(h))
 
 class StructuredTreePathAttentionModel(nn.Module):
     PATH_NUMERIC_DIM = 9
@@ -1215,6 +1202,15 @@ class StructuredTreePathAttentionModel(nn.Module):
         use_global_context: bool = True,
         use_path_attention: bool = True,
         use_inter_peak_interaction: bool = True,
+        use_bidirectional_path: bool = False,
+        use_extra_ion_head: bool = False,
+        fuse_extra_head_with_path: bool = False,
+        use_path_mass_residual: bool = False,
+        reverse_path_swap_numeric: bool = False,
+        use_path_parent_refinement: bool = False,
+        mass_head_type: str = "mlp",
+        max_mz: int = 1024,
+        intensity_power: float = 1.0,
     ) -> None:
         super().__init__()
         if d_model % n_heads != 0:
@@ -1225,7 +1221,21 @@ class StructuredTreePathAttentionModel(nn.Module):
         self.d_model = d_model
         self.max_path_len = max_path_len
         self.morgan_fp_dim = int(morgan_fp_dim)
-
+        self.max_mz = int(max_mz)
+        self.intensity_power = float(intensity_power)
+        if self.intensity_power <= 0.0:
+            raise ValueError("intensity_power must be positive")
+        self.use_bidirectional_path = bool(use_bidirectional_path)
+        self.use_extra_ion_head = bool(use_extra_ion_head)
+        self.fuse_extra_head_with_path = bool(fuse_extra_head_with_path)
+        self.use_path_mass_residual = bool(use_path_mass_residual)
+        self.reverse_path_swap_numeric = bool(reverse_path_swap_numeric)
+        self.use_path_parent_refinement = bool(use_path_parent_refinement)
+        self.mass_head_type = str(mass_head_type)
+        if self.mass_head_type not in {"mlp", "resnet"}:
+            raise ValueError("mass_head_type must be 'mlp' or 'resnet'")
+        if self.use_path_parent_refinement and not self.use_path_mass_residual:
+            raise ValueError("path-parent refinement requires the path-conditioned mass spectrum branch")
 
         self.use_global_context = bool(use_global_context)
         self.use_path_attention = bool(use_path_attention)
@@ -1235,6 +1245,25 @@ class StructuredTreePathAttentionModel(nn.Module):
         self.path_pos_embedding = nn.Embedding(max_path_len, d_model)
         self.path_type_embedding = nn.Embedding(n_token_types, d_model, padding_idx=0)
         self.mechanism_embedding = nn.Embedding(n_mechanisms, d_model, padding_idx=0)
+        n_mechanism_classes = max(1, int(n_mechanisms) - 1)
+        self.candidate_mechanism_head = nn.Sequential(
+            nn.LayerNorm(d_model * 2),
+            nn.Linear(d_model * 2, d_model),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, n_mechanism_classes),
+        )
+        self.mechanism_context_gate = nn.Linear(d_model * 2, d_model)
+        self.mechanism_context_norm = nn.LayerNorm(d_model)
+        self.mass_mechanism_head = nn.Sequential(
+            nn.LayerNorm(d_model * 2),
+            nn.Linear(d_model * 2, d_model),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, n_mechanism_classes),
+        )
+        self.mass_mechanism_context_gate = nn.Linear(d_model * 2, d_model)
+        self.mass_mechanism_context_norm = nn.LayerNorm(d_model)
 
         self.token_mz_mlp = nn.Sequential(
             nn.Linear(self.PATH_NUMERIC_DIM, d_model),
@@ -1288,6 +1317,21 @@ class StructuredTreePathAttentionModel(nn.Module):
             nn.Dropout(dropout),
         )
         self.path_norm = nn.LayerNorm(d_model)
+        self.reverse_path_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
+        self.reverse_path_ffn = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, 4*d_model), nn.GELU(), nn.Dropout(dropout), nn.Linear(4*d_model, d_model), nn.Dropout(dropout))
+        self.reverse_path_norm = nn.LayerNorm(d_model)
+        self.reverse_numeric_context_mlp = (
+            nn.Sequential(
+                nn.LayerNorm(self.PATH_NUMERIC_DIM),
+                nn.Linear(self.PATH_NUMERIC_DIM, d_model),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(d_model, d_model),
+            ) if self.reverse_path_swap_numeric else None
+        )
+        self.reverse_direction_embedding = nn.Parameter(torch.zeros(d_model))
+        self.bidirectional_fusion_gate = nn.Sequential(nn.Linear(3*d_model, d_model), nn.Sigmoid())
+        self.bidirectional_fusion_norm = nn.LayerNorm(d_model)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -1327,6 +1371,60 @@ class StructuredTreePathAttentionModel(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(d_model // 2, 1),
         )
+        self.dense_spectrum_head = nn.Sequential(
+            nn.LayerNorm(2*d_model), nn.Linear(2*d_model, d_model), nn.GELU(),
+            nn.Dropout(dropout), nn.Linear(d_model, d_model//2), nn.GELU(),
+            nn.Dropout(dropout), nn.Linear(d_model//2, self.max_mz+1),
+        )
+        self.dense_branch_log_scale = nn.Parameter(torch.tensor(-2.3025851))
+        self.path_mass_spectrum_head = None
+        self.mass_coordinate_gate = None
+        if self.use_path_mass_residual:
+            if self.mass_head_type == "resnet":
+                self.path_mass_spectrum_head = BidirectionalPathMassResNet(
+                    self.morgan_fp_dim, 2 * (self.max_mz + 1),
+                    hidden_units=2000, dropout_rate=0.25,
+                )
+            else:
+                self.path_mass_spectrum_head = nn.Sequential(
+                    nn.Linear(self.morgan_fp_dim, 2048),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(2048, 2048),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(2048, 2 * (self.max_mz + 1)),
+                )
+            self.mass_coordinate_gate = nn.Linear(
+                self.morgan_fp_dim, self.max_mz + 1
+            )
+            nn.init.zeros_(self.mass_coordinate_gate.weight)
+            nn.init.zeros_(self.mass_coordinate_gate.bias)
+
+        self.path_spectrum_residual = None
+        self.mass_path_key = None
+        self.mass_path_attn = None
+        self.mass_path_norm = None
+        self.mass_path_head = None
+        if self.use_path_parent_refinement:
+            self.path_spectrum_residual = nn.Sequential(
+                nn.LayerNorm(3 * d_model),
+                nn.Linear(3 * d_model, d_model),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(d_model, self.max_mz + 1),
+            )
+            nn.init.zeros_(self.path_spectrum_residual[-1].weight)
+            nn.init.zeros_(self.path_spectrum_residual[-1].bias)
+            self.mass_path_key = nn.Linear(2 * d_model, d_model)
+            self.mass_path_attn = nn.MultiheadAttention(
+                d_model, n_heads, dropout=dropout, batch_first=True
+            )
+            self.mass_path_norm = nn.LayerNorm(d_model)
+            self.mass_path_head = nn.Linear(d_model, 1)
+            nn.init.zeros_(self.mass_path_head.weight)
+            nn.init.zeros_(self.mass_path_head.bias)
+        self.last_aux_outputs = None
         self._init_weights()
 
     def _init_weights(self) -> None:
@@ -1400,23 +1498,21 @@ class StructuredTreePathAttentionModel(nn.Module):
         device = path_token_ids.device
         bsz, max_p, max_l, _ = path_token_ids.shape
 
-        path_embedding = self.mean_word_embed(path_token_ids)
         positions = torch.arange(max_l, device=device).view(1, 1, max_l)
-        path_embedding = path_embedding + self.path_pos_embedding(positions)
-        path_embedding = path_embedding + self.path_type_embedding(path_type_ids.clamp_min(0))
-        path_embedding = path_embedding + self.mechanism_embedding(path_mech_ids.clamp_min(0))
-
+        path_content = self.mean_word_embed(path_token_ids)
+        path_content = path_content + self.path_type_embedding(path_type_ids.clamp_min(0))
+        path_content = path_content + self.mechanism_embedding(path_mech_ids.clamp_min(0))
         mw_for_path = mw.view(bsz, 1, 1).expand_as(path_product_mz)
-        path_embedding = path_embedding + self.token_mz_mlp(
+        path_content = path_content + self.token_mz_mlp(
             self.path_numeric_features(path_parent_mz, path_product_mz, mw_for_path)
         )
+        path_embedding = path_content + self.path_pos_embedding(positions)
 
         product_embedding = self.product_proj(self.mean_word_embed(product_token_ids))
         mw_for_peak = mw.view(bsz, 1).expand_as(mz)
         peak_query = product_embedding + self.peak_mz_mlp(
             self.peak_mz_features(mz, mw_for_peak)
         )
-
 
         if self.use_global_context:
             global_embedding = self.global_mol_encoder(morgan_fp.float())
@@ -1435,7 +1531,6 @@ class StructuredTreePathAttentionModel(nn.Module):
         flat_path_mask = path_mask.reshape(bsz * max_p, max_l)
         flat_peak_mask = peak_mask.reshape(bsz * max_p)
 
-
         valid = flat_peak_mask & flat_path_mask.any(dim=-1)
         valid_f = valid.to(flat_path.dtype).view(-1, 1, 1)
         safe_flat_path = flat_path * valid_f
@@ -1443,7 +1538,6 @@ class StructuredTreePathAttentionModel(nn.Module):
         safe_flat_path_mask = torch.cat(
             [safe_first_column, flat_path_mask[:, 1:]], dim=1
         )
-
 
         if self.use_path_attention:
             attended, _ = self.path_attn(
@@ -1460,13 +1554,88 @@ class StructuredTreePathAttentionModel(nn.Module):
             attended = (flat_path * path_weight).sum(dim=1) / path_denominator
             attended = attended * valid.to(attended.dtype).unsqueeze(-1)
 
-        attended = attended + self.path_ffn(attended)
-        path_representation = attended * valid.to(attended.dtype).unsqueeze(-1)
-        path_representation = self.path_norm(
-            path_representation + peak_query.reshape(bsz * max_p, self.d_model)
+        flat_peak_query = flat_query.squeeze(1)
+        forward_attended = attended + self.path_ffn(attended)
+        forward_representation = self.path_norm(
+            forward_attended * valid.to(forward_attended.dtype).unsqueeze(-1) + flat_peak_query
         )
+        if self.use_bidirectional_path:
+            lengths = flat_path_mask.long().sum(dim=1, keepdim=True).clamp_min(1)
+            reverse_positions = torch.arange(max_l, device=device).view(1, max_l)
+            reverse_indices = (lengths - 1 - reverse_positions).clamp_min(0)
+            index_3d = reverse_indices.unsqueeze(-1)
+            reverse_embedding = torch.gather(
+                flat_path, 1, index_3d.expand(-1, -1, flat_path.size(-1))
+            )
+
+            old_position_embedding = self.path_pos_embedding(reverse_indices)
+            new_position_embedding = self.path_pos_embedding(reverse_positions)
+            reverse_embedding = (
+                reverse_embedding - old_position_embedding + new_position_embedding
+            )
+            reverse_embedding = reverse_embedding + self.reverse_direction_embedding.view(1, 1, -1)
+            reverse_embedding = reverse_embedding * valid_f
+            if self.reverse_path_swap_numeric:
+                flat_parent_mz = path_parent_mz.reshape(bsz * max_p, max_l)
+                flat_product_mz = path_product_mz.reshape(bsz * max_p, max_l)
+                reverse_parent_mz = torch.gather(flat_product_mz, 1, reverse_indices)
+                reverse_product_mz = torch.gather(flat_parent_mz, 1, reverse_indices)
+                reverse_mw = mw.view(bsz, 1, 1).expand(
+                    bsz, max_p, max_l
+                ).reshape(bsz * max_p, max_l)
+                reverse_numeric = self.path_numeric_features(
+                    reverse_parent_mz, reverse_product_mz, reverse_mw
+                )
+                reverse_numeric_mask = flat_path_mask.to(reverse_numeric.dtype).unsqueeze(-1)
+                reverse_numeric = (
+                    reverse_numeric * reverse_numeric_mask
+                ).sum(dim=1) / reverse_numeric_mask.sum(dim=1).clamp_min(1.0)
+                reverse_embedding = reverse_embedding + self.reverse_numeric_context_mlp(
+                    reverse_numeric
+                ).unsqueeze(1)
+            reverse_mask = safe_flat_path_mask
+            safe_reverse = reverse_embedding
+            reverse_attended, _ = self.reverse_path_attn(
+                query=flat_query, key=safe_reverse, value=safe_reverse,
+                key_padding_mask=~safe_flat_path_mask, need_weights=False,
+            )
+            reverse_attended = reverse_attended.squeeze(1)
+            reverse_attended = reverse_attended + self.reverse_path_ffn(reverse_attended)
+            reverse_representation = self.reverse_path_norm(
+                reverse_attended * valid.to(reverse_attended.dtype).unsqueeze(-1) + flat_peak_query
+            )
+            gate = self.bidirectional_fusion_gate(torch.cat(
+                [forward_representation, reverse_representation, flat_peak_query], dim=-1
+            ))
+            path_representation = self.bidirectional_fusion_norm(
+                forward_representation + gate * reverse_representation
+            )
+        else:
+            path_representation = forward_representation
+        path_representation = path_representation * valid.to(path_representation.dtype).unsqueeze(-1)
         peak_representation = path_representation.reshape(bsz, max_p, self.d_model)
 
+        flat_mech_ids = path_mech_ids.reshape(bsz * max_p, max_l)
+        flat_mech_embedding = self.mechanism_embedding(flat_mech_ids.clamp_min(0))
+        clean_flat_path = flat_path - flat_mech_embedding
+        clean_path_weights = flat_path_mask.to(clean_flat_path.dtype).unsqueeze(-1)
+        clean_path_mean = (clean_flat_path * clean_path_weights).sum(dim=1)
+        clean_path_mean = clean_path_mean / clean_path_weights.sum(dim=1).clamp_min(1.0)
+        candidate_mechanism_logits = self.candidate_mechanism_head(
+            torch.cat([flat_peak_query, clean_path_mean], dim=-1)
+        ).view(bsz, max_p, -1)
+        candidate_mechanism_prob = torch.softmax(candidate_mechanism_logits.float(), dim=-1)
+        candidate_mechanism_context = candidate_mechanism_prob.to(
+            self.mechanism_embedding.weight.dtype
+        ) @ self.mechanism_embedding.weight[1:]
+        candidate_mechanism_gate = torch.sigmoid(
+            self.mechanism_context_gate(
+                torch.cat([peak_representation, candidate_mechanism_context], dim=-1)
+            )
+        )
+        peak_representation = self.mechanism_context_norm(
+            peak_representation + candidate_mechanism_gate * candidate_mechanism_context
+        )
 
         if self.use_inter_peak_interaction:
             if self.use_global_context:
@@ -1507,16 +1676,187 @@ class StructuredTreePathAttentionModel(nn.Module):
             interacted = peak_representation
 
         output_logits = self.output_head(interacted).squeeze(-1)
-        prediction = F.softplus(output_logits, beta=1.0, threshold=20.0) * peak_mask.float()
         ranking_logits = output_logits.masked_fill(~peak_mask, -1.0e4)
+        aux_outputs = {
+            "candidate_mechanism_logits": candidate_mechanism_logits,
+        }
+        if self.use_path_mass_residual:
+            path_delta = torch.tanh(output_logits.float()) * peak_mask.float()
+            spectrum_logits = self.path_mass_spectrum_head(morgan_fp.float())
+            forward_logits, reverse_logits = spectrum_logits.chunk(2, dim=-1)
+            mz_bins = torch.arange(self.max_mz + 1, device=device).view(1, -1)
+            precursor_bin = torch.round(mw).long().clamp(0, self.max_mz)
+            neutral_loss_bin = precursor_bin.view(bsz, 1) - mz_bins
+            reverse_valid = (
+                (neutral_loss_bin >= 0) & (neutral_loss_bin <= self.max_mz)
+            )
+            safe_loss_bin = neutral_loss_bin.clamp(0, self.max_mz)
+            reverse_aligned_logits = reverse_logits.gather(1, safe_loss_bin)
+            if self.mass_head_type == "resnet":
+                forward_intensity = F.relu(forward_logits.float())
+                reverse_intensity = F.relu(reverse_aligned_logits.float())
+            else:
+                forward_intensity = F.softplus(forward_logits.float())
+                reverse_intensity = F.softplus(reverse_aligned_logits.float())
+            coordinate_gate = torch.sigmoid(
+                self.mass_coordinate_gate(morgan_fp.float())
+            )
+            global_spectrum = torch.where(
+                reverse_valid,
+                coordinate_gate * forward_intensity
+                + (1.0 - coordinate_gate) * reverse_intensity,
+                forward_intensity,
+            )
+            spectrum_mask = (
+                (mz_bins >= 1)
+                & (mz_bins <= precursor_bin.view(bsz, 1) + 1)
+                & (mz_bins <= self.max_mz)
+            )
+            global_spectrum = global_spectrum * spectrum_mask.float()
+            if self.use_path_parent_refinement:
+                flat_mech_ids = path_mech_ids.reshape(bsz * max_p, max_l)
+                mechanism_embedding = self.mechanism_embedding(flat_mech_ids.clamp_min(0))
+                forward_clean_path = flat_path - mechanism_embedding
+                path_token_weights = flat_path_mask.to(flat_path.dtype).unsqueeze(-1)
+                forward_path_mean = (
+                    forward_clean_path * path_token_weights
+                ).sum(dim=1) / path_token_weights.sum(dim=1).clamp_min(1.0)
+                forward_path_mean = forward_path_mean.view(bsz, max_p, self.d_model)
+                if self.use_bidirectional_path:
+                    reverse_mech_ids = torch.gather(flat_mech_ids, 1, reverse_indices)
+                    reverse_mech_embedding = self.mechanism_embedding(reverse_mech_ids.clamp_min(0))
+                    reverse_clean_path = reverse_embedding - reverse_mech_embedding
+                    reverse_path_mean = (
+                        reverse_clean_path * path_token_weights
+                    ).sum(dim=1) / path_token_weights.sum(dim=1).clamp_min(1.0)
+                    reverse_path_mean = reverse_path_mean.view(bsz, max_p, self.d_model)
+                else:
+                    reverse_path_mean = torch.zeros_like(forward_path_mean)
+                valid_parent_paths = path_mask.any(dim=-1) & peak_mask
+                parent_weights = valid_parent_paths.to(forward_path_mean.dtype).unsqueeze(-1)
+                parent_count = parent_weights.sum(dim=1).clamp_min(1.0)
+                molecule_forward_path = (forward_path_mean * parent_weights).sum(dim=1) / parent_count
+                molecule_reverse_path = (reverse_path_mean * parent_weights).sum(dim=1) / parent_count
+                has_parent_path = valid_parent_paths.any(dim=1, keepdim=True).to(global_spectrum.dtype)
+                if global_embedding is None:
+                    parent_global_context = torch.zeros_like(molecule_forward_path)
+                else:
+                    parent_global_context = global_embedding
+                path_spectrum_context = torch.cat(
+                    [parent_global_context, molecule_forward_path, molecule_reverse_path], dim=-1
+                )
+                path_spectrum_log_bias = 0.5 * torch.tanh(
+                    self.path_spectrum_residual(path_spectrum_context.float())
+                ) * has_parent_path
+                global_spectrum = global_spectrum * path_spectrum_log_bias.exp()
+
+                mass_bins = torch.arange(self.max_mz + 1, device=device).view(1, -1).expand(bsz, -1)
+                mass_mw = mw.view(bsz, 1).expand_as(mass_bins)
+                mass_queries = self.peak_mz_mlp(
+                    self.peak_mz_features(mass_bins.to(mz.dtype), mass_mw)
+                )
+                if global_embedding is not None:
+                    mass_queries = mass_queries + global_embedding.unsqueeze(1)
+                mass_path_keys = self.mass_path_key(
+                    torch.cat([forward_path_mean, reverse_path_mean], dim=-1)
+                )
+                safe_parent_mask = valid_parent_paths.clone()
+                no_parent_path = ~safe_parent_mask.any(dim=1)
+                safe_parent_mask[:, 0] = safe_parent_mask[:, 0] | no_parent_path
+                mass_path_keys = mass_path_keys * has_parent_path.unsqueeze(-1)
+                mass_path_context, _ = self.mass_path_attn(
+                    query=mass_queries,
+                    key=mass_path_keys,
+                    value=mass_path_keys,
+                    key_padding_mask=~safe_parent_mask,
+                    need_weights=False,
+                )
+                mass_path_context = self.mass_path_norm(mass_queries + mass_path_context)
+                mass_mechanism_logits = self.mass_mechanism_head(
+                    torch.cat([mass_queries, mass_path_context], dim=-1)
+                )
+                mass_mechanism_prob = torch.softmax(
+                    mass_mechanism_logits.float(), dim=-1
+                )
+                mass_mechanism_context = mass_mechanism_prob.to(
+                    self.mechanism_embedding.weight.dtype
+                ) @ self.mechanism_embedding.weight[1:]
+                mass_mechanism_gate = torch.sigmoid(
+                    self.mass_mechanism_context_gate(
+                        torch.cat([mass_path_context, mass_mechanism_context], dim=-1)
+                    )
+                )
+                mass_path_context = self.mass_mechanism_context_norm(
+                    mass_path_context + mass_mechanism_gate * mass_mechanism_context
+                )
+                aux_outputs["mass_mechanism_logits"] = mass_mechanism_logits
+                mass_path_log_bias = 0.5 * torch.tanh(
+                    self.mass_path_head(mass_path_context).squeeze(-1)
+                ) * has_parent_path
+                global_spectrum = global_spectrum * mass_path_log_bias.exp()
+                global_spectrum = global_spectrum * spectrum_mask.float()
+            candidate_bins = torch.round(mz).long().clamp(
+                min=0, max=self.max_mz
+            )
+            adjusted_log_spectrum = torch.log1p(global_spectrum.clamp_min(0.0))
+            adjusted_log_spectrum = adjusted_log_spectrum.scatter_add(
+                1, candidate_bins, path_delta
+            )
+            path_corrected_spectrum = torch.expm1(
+                adjusted_log_spectrum
+            ).clamp_min(0.0) * spectrum_mask.float()
+            prediction = path_corrected_spectrum.gather(
+                1, candidate_bins
+            ) * peak_mask.float()
+
+            aux_outputs.update({
+                "path_delta_raw": path_delta,
+                "global_spectrum_raw": global_spectrum,
+                "forward_spectrum_raw": forward_intensity * spectrum_mask.float(),
+                "reverse_spectrum_raw": reverse_intensity * spectrum_mask.float(),
+            })
+        else:
+            prediction = F.softplus(
+                output_logits, beta=1.0, threshold=20.0
+            ) * peak_mask.float()
+        if self.use_path_mass_residual:
+            dense_prediction = global_spectrum
+            if self.use_extra_ion_head and self.fuse_extra_head_with_path:
+                weights = peak_mask.to(interacted.dtype).unsqueeze(-1)
+                pooled_peaks = (interacted * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1.0)
+                mol_context = global_embedding if global_embedding is not None else torch.zeros_like(pooled_peaks)
+                dense_logits = self.dense_spectrum_head(torch.cat([mol_context, pooled_peaks], dim=-1))
+                extra_prediction = F.softplus(dense_logits, beta=1.0, threshold=20.0)
+                extra_prediction = extra_prediction * torch.sigmoid(self.dense_branch_log_scale.clamp(-5.0, 1.0))
+                mz_bins = torch.arange(self.max_mz + 1, device=device).view(1, -1)
+                mass_limit = torch.floor(mw).view(bsz, 1) + 2.0
+                extra_prediction = extra_prediction * (mz_bins <= mass_limit).to(extra_prediction.dtype)
+                extra_prediction = torch.cat([torch.zeros_like(extra_prediction[:, :1]), extra_prediction[:, 1:]], dim=1)
+                dense_prediction = dense_prediction + extra_prediction
+        elif self.use_extra_ion_head:
+            weights = peak_mask.to(interacted.dtype).unsqueeze(-1)
+            pooled_peaks = (interacted * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1.0)
+            mol_context = global_embedding if global_embedding is not None else torch.zeros_like(pooled_peaks)
+            dense_logits = self.dense_spectrum_head(torch.cat([mol_context, pooled_peaks], dim=-1))
+            dense_prediction = F.softplus(dense_logits, beta=1.0, threshold=20.0)
+            dense_prediction = dense_prediction * self.dense_branch_log_scale.clamp(-5.0, 1.0).exp()
+            mz_bins = torch.arange(self.max_mz + 1, device=device).view(1, -1)
+            mass_limit = torch.floor(mw).view(bsz, 1) + 2.0
+            dense_prediction = dense_prediction * (mz_bins <= mass_limit).to(dense_prediction.dtype)
+            dense_prediction = torch.cat([torch.zeros_like(dense_prediction[:, :1]), dense_prediction[:, 1:]], dim=1)
+        else:
+            dense_prediction = prediction.new_zeros((bsz, self.max_mz + 1))
+        if self.intensity_power != 1.0:
+            prediction = prediction.clamp_min(0.0).pow(self.intensity_power)
+            dense_prediction = dense_prediction.clamp_min(0.0).pow(self.intensity_power)
         if return_logits:
-            return prediction, ranking_logits
+            if aux_outputs is not None:
+                return prediction, ranking_logits, dense_prediction, aux_outputs
+            return prediction, ranking_logits, dense_prediction
         return prediction
 
-
-EXPECTED_MODEL_INPUT_VERSION = "path_parent_product_mz_morgan_globaltoken_softplus_fiveloss_v7"
+EXPECTED_MODEL_INPUT_VERSION = "path_parent_product_mz_morgan_dense_scale_massmask_v8"
 EXPECTED_PATH_NUMERIC_DIM = 9
-
 
 def default_model_config() -> Dict[str, Any]:
     return {
@@ -1527,6 +1867,7 @@ def default_model_config() -> Dict[str, Any]:
         "dropout": 0.08,
         "max_path_len": 128,
         "max_peaks": 320,
+        "max_mz": 1024,
         "max_words_per_token": 64,
         "morgan_fp_dim": 4096,
         "morgan_radius": 2,
@@ -1534,10 +1875,17 @@ def default_model_config() -> Dict[str, Any]:
         "path_numeric_dim": EXPECTED_PATH_NUMERIC_DIM,
         "smiles_tokenization": "field-aware-hashed",
 
-
         "use_global_context": True,
         "use_path_attention": True,
         "use_inter_peak_interaction": True,
+        "use_bidirectional_path": False,
+        "use_extra_ion_head": False,
+        "use_path_mass_residual": False,
+        "reverse_path_swap_numeric": False,
+        "use_path_parent_refinement": False,
+        "mass_head_type": "mlp",
+        "ablate_bidirectional_path": True,
+        "ablate_extra_ion_head": True,
         "ablate_intensity_loss": False,
         "ablate_spectral_loss": False,
         "ablate_ranking_loss": False,
@@ -1551,7 +1899,6 @@ def default_model_config() -> Dict[str, Any]:
         "ablation_metadata_found": False,
     }
 
-
 def torch_load_compat(path: str, map_location: Any) -> Any:
     try:
         return torch.load(
@@ -1562,8 +1909,7 @@ def torch_load_compat(path: str, map_location: Any) -> Any:
     except TypeError:
         return torch.load(path, map_location=map_location)
 
-
-def _validate_model_config(
+def _validate_optimized_config(
     cfg: Dict[str, Any],
     *,
     source: str,
@@ -1581,7 +1927,7 @@ def _validate_model_config(
     if numeric_dim != EXPECTED_PATH_NUMERIC_DIM:
         raise ValueError(
             f"{source} uses path_numeric_dim={numeric_dim}, but this "
-            f"Stage2 inference requires {EXPECTED_PATH_NUMERIC_DIM}."
+            f"optimized inference code requires {EXPECTED_PATH_NUMERIC_DIM}."
         )
     if input_version != EXPECTED_MODEL_INPUT_VERSION:
         raise ValueError(
@@ -1593,7 +1939,6 @@ def _validate_model_config(
             f"{source} uses smiles_tokenization={tokenization!r}, but this "
             "inference code requires 'field-aware-hashed'."
         )
-
 
 def load_train_config(
     config_file: Optional[str],
@@ -1704,6 +2049,15 @@ def load_train_config(
                         not bool(ablation_obj.get("ablate_inter_peak_interaction", False)),
                     )
                 ),
+                "use_bidirectional_path": bool(model_obj.get("use_bidirectional_path", not bool(ablation_obj.get("ablate_bidirectional_path", True)))),
+                "use_extra_ion_head": bool(model_obj.get("use_extra_ion_head", not bool(ablation_obj.get("ablate_extra_ion_head", True)))),
+                "fuse_extra_head_with_path": bool(model_obj.get("fuse_extra_head_with_path", False)),
+                "use_path_mass_residual": bool(model_obj.get("use_path_mass_residual", model_obj.get("use_neims_path_residual", False))),
+                "reverse_path_swap_numeric": bool(model_obj.get("reverse_path_swap_numeric", False)),
+                "use_path_parent_refinement": bool(model_obj.get("use_path_parent_refinement", False)),
+                "mass_head_type": str(model_obj.get("mass_head_type", model_obj.get("neims_head_type", "mlp"))),
+                "max_mz": int(model_obj.get("max_mz", data_obj.get("max_mz", cfg["max_mz"]))),
+                "intensity_power": float(model_obj.get("intensity_power", data_obj.get("intensity_power", 1.0))),
             }
         )
 
@@ -1716,6 +2070,8 @@ def load_train_config(
             "ablate_global_context",
             "ablate_path_attention",
             "ablate_inter_peak_interaction",
+            "ablate_bidirectional_path",
+            "ablate_extra_ion_head",
             "ablate_gold_guided_curriculum",
         ):
             if ablation_key in ablation_obj:
@@ -1729,15 +2085,18 @@ def load_train_config(
             or "use_global_context" in model_obj
             or "use_path_attention" in model_obj
             or "use_inter_peak_interaction" in model_obj
+            or "use_bidirectional_path" in model_obj
+            or "use_extra_ion_head" in model_obj
         )
-
 
         cfg["ablate_global_context"] = not bool(cfg["use_global_context"])
         cfg["ablate_path_attention"] = not bool(cfg["use_path_attention"])
         cfg["ablate_inter_peak_interaction"] = not bool(cfg["use_inter_peak_interaction"])
+        cfg["ablate_bidirectional_path"] = not bool(cfg["use_bidirectional_path"])
+        cfg["ablate_extra_ion_head"] = not bool(cfg["use_extra_ion_head"])
 
-        _validate_model_config(cfg, source=candidate)
-        print(f"[INFO] Loaded model config from: {candidate}")
+        _validate_optimized_config(cfg, source=candidate)
+        print(f"[INFO] Loaded optimized model config from: {candidate}")
         return cfg
 
     try:
@@ -1806,19 +2165,18 @@ def load_train_config(
                 if torch.is_tensor(weight):
                     cfg["path_numeric_dim"] = int(weight.shape[1])
 
-        _validate_model_config(
+        _validate_optimized_config(
             cfg,
             source="checkpoint metadata",
         )
-        print("[INFO] Loaded model config from checkpoint.")
+        print("[INFO] Loaded optimized model config from checkpoint.")
         return cfg
     except Exception as exc:
         raise RuntimeError(
-            "Could not load a compatible Stage2 configuration. "
+            "Could not load a compatible optimized Stage2 configuration. "
             "Provide the model_config.json generated by "
-            "stage2_train_union_ablation.py."
+            "stage2_train_v3_optimized.py."
         ) from exc
-
 
 ABLATION_DISPLAY_NAMES = {
     "ablate_intensity_loss": "w/o Intensity loss",
@@ -1829,6 +2187,8 @@ ABLATION_DISPLAY_NAMES = {
     "ablate_global_context": "w/o Global molecular context",
     "ablate_path_attention": "w/o Path attention",
     "ablate_inter_peak_interaction": "w/o Inter-peak interaction",
+    "ablate_bidirectional_path": "w/o Bidirectional path",
+    "ablate_extra_ion_head": "w/o Extra-ion spectrum head",
     "ablate_gold_guided_curriculum": "w/o Gold-guided curriculum",
 }
 
@@ -1836,8 +2196,9 @@ ARCHITECTURE_ABLATION_KEYS = {
     "ablate_global_context",
     "ablate_path_attention",
     "ablate_inter_peak_interaction",
+    "ablate_bidirectional_path",
+    "ablate_extra_ion_head",
 }
-
 
 def resolve_inference_ablation_configuration(
     args: argparse.Namespace,
@@ -1878,6 +2239,8 @@ def resolve_inference_ablation_configuration(
     resolved["use_inter_peak_interaction"] = not bool(
         resolved["ablate_inter_peak_interaction"]
     )
+    resolved["use_bidirectional_path"] = not bool(resolved["ablate_bidirectional_path"])
+    resolved["use_extra_ion_head"] = not bool(resolved["ablate_extra_ion_head"])
 
     active = [
         display_name
@@ -1887,7 +2250,6 @@ def resolve_inference_ablation_configuration(
     resolved["active_ablations"] = active
     resolved["is_full_model"] = len(active) == 0
     return resolved
-
 
 def print_inference_ablation_configuration(cfg: Dict[str, Any]) -> None:
     print("\n" + "=" * 80)
@@ -1912,7 +2274,6 @@ def print_inference_ablation_configuration(cfg: Dict[str, Any]) -> None:
     )
     print("=" * 80 + "\n")
 
-
 def strip_prefix_if_present(
     state_dict: Dict[str, torch.Tensor],
     prefix: str,
@@ -1924,6 +2285,25 @@ def strip_prefix_if_present(
         for key, value in state_dict.items()
     }
 
+def canonicalize_spectrum_state_dict(state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    out: Dict[str, torch.Tensor] = {}
+    aliases = (
+        ("neims_spectrum_head.", "path_mass_spectrum_head."),
+        ("neims_coordinate_gate.", "mass_coordinate_gate."),
+    )
+    for key, value in state.items():
+        clean = key
+        for prefix in ("_orig_mod.", "module."):
+            if clean.startswith(prefix):
+                clean = clean[len(prefix):]
+        for old, new in aliases:
+            if clean.startswith(old):
+                clean = new + clean[len(old):]
+                break
+        if clean in out:
+            raise ValueError("Checkpoint contains duplicate canonical tensor key: " + clean)
+        out[clean] = value
+    return out
 
 def load_checkpoint_into_model(
     model: nn.Module,
@@ -1948,8 +2328,7 @@ def load_checkpoint_into_model(
     else:
         raise ValueError("Unsupported checkpoint format.")
 
-    state = strip_prefix_if_present(state, "_orig_mod.")
-    state = strip_prefix_if_present(state, "module.")
+    state = canonicalize_spectrum_state_dict(state)
 
     numeric_weight = state.get("token_mz_mlp.0.weight")
     if torch.is_tensor(numeric_weight):
@@ -1989,6 +2368,9 @@ def load_checkpoint_into_model(
             "best_val": checkpoint.get("best_val"),
             "phase_name": checkpoint.get("phase_name"),
             "selected_model": checkpoint.get("selected_model"),
+            "selection_metric": checkpoint.get("selection_metric", checkpoint.get("checkpoint_policy", "unknown")),
+            "selection_epoch": checkpoint.get("selection_epoch"),
+            "fixed_epoch_target": checkpoint.get("fixed_epoch_target"),
             "model_input_version": checkpoint.get(
                 "model_input_version"
             ),
@@ -2004,13 +2386,11 @@ def load_checkpoint_into_model(
             }
     return metadata
 
-
 def move_batch(batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
     return {
         k: (v.to(device, non_blocking=True) if torch.is_tensor(v) else v)
         for k, v in batch.items()
     }
-
 
 @torch.no_grad()
 def run_inference(
@@ -2021,7 +2401,6 @@ def run_inference(
     *,
     amp: bool,
     amp_dtype: str,
-    keep_gold: bool,
     keep_triplets: bool,
     keep_input_record: bool,
     save_pred_as_intensity: bool,
@@ -2032,13 +2411,14 @@ def run_inference(
     use_amp = amp and device.type == "cuda"
     dtype = torch.bfloat16 if amp_dtype == "bf16" else torch.float16
 
+    core_model = model.module if isinstance(model, nn.DataParallel) else model
     model.eval()
 
     for batch_idx, batch in enumerate(loader, start=1):
         batch = move_batch(batch, device)
 
         with torch.amp.autocast(device_type="cuda", dtype=dtype, enabled=use_amp):
-            pred = model(
+            model_outputs = model(
                 path_token_ids=batch["path_token_ids"],
                 product_token_ids=batch["product_token_ids"],
                 path_type_ids=batch["path_type_ids"],
@@ -2050,18 +2430,16 @@ def run_inference(
                 mz=batch["mz"],
                 mw=batch["mw"],
                 morgan_fp=batch["morgan_fp"],
+                return_logits=True,
             )
-
+            pred_raw, _, dense_raw = model_outputs[:3]
 
         if normalize_base_peak:
-            pred = normalize_prediction_by_base_peak(
-                pred,
-                batch["peak_mask"],
-            )
+            pred = normalize_prediction_by_base_peak(pred_raw, batch["peak_mask"])
         else:
-            pred = pred * batch["peak_mask"].float()
-
+            pred = pred_raw * batch["peak_mask"].float()
         pred = pred.detach().float().cpu()
+        dense_values_cpu = dense_raw.detach().float().cpu()
         peak_mask = batch["peak_mask"].detach().cpu()
 
         for b, meta in enumerate(batch["meta"]):
@@ -2069,16 +2447,23 @@ def run_inference(
             mz_values = meta["mz_values"][:valid_n]
             product_texts = meta["product_texts"][:valid_n]
 
-
+            max_allowed_bin = min(int(getattr(core_model, "max_mz", 1024)), int(math.floor(parse_float(meta.get("mw", 0.0), 0.0))) + 2)
+            dense_values = [max(0.0, float(v)) for v in dense_values_cpu[b].tolist()]
+            dense_valid_max = max(dense_values[1:max_allowed_bin+1], default=0.0)
+            candidate_valid_max = max((float(pred[b, i].item()) for i in range(valid_n)), default=0.0)
+            spectrum_scale = max(dense_valid_max, candidate_valid_max, 1e-8)
             pred_values = [
-                max(0.0, min(1.0, float(pred[b, i].item())))
+                max(0.0, min(1.0, float(pred[b, i].item()) / spectrum_scale))
                 for i in range(valid_n)
             ]
+            dense_values = [value / spectrum_scale for value in dense_values]
 
             predicted_intensity: Dict[str, float] = {}
             predicted_peaks: List[Dict[str, Any]] = []
+            candidate_bins = set()
 
             for mz, product, yhat in zip(mz_values, product_texts, pred_values):
+                candidate_bins.add(int(round(float(mz))))
                 mz_key = format_mz_key(float(mz))
                 yhat_round = round(float(yhat), round_digits)
                 predicted_intensity[mz_key] = yhat_round
@@ -2088,6 +2473,22 @@ def run_inference(
                     "pred_intensity": yhat_round,
                 })
 
+            extras = []
+            if (getattr(core_model, "use_extra_ion_head", False) or getattr(core_model, "use_path_mass_residual", False)) and len(dense_values) > 1 and int(getattr(core_model, "max_mz", 1024)) > 0:
+                
+                mass_upper = max(1, int(math.floor(parse_float(meta.get("mw", 0.0), 0.0))) + 2)
+                max_allowed_bin = min(len(dense_values), int(getattr(core_model, "max_mz", 1024)) + 1, mass_upper + 1)
+                candidates = [(mz_i, float(dense_values[mz_i])) for mz_i in range(1, max_allowed_bin)
+                              if mz_i not in candidate_bins and float(dense_values[mz_i]) >= 0.0]
+                candidates.sort(key=lambda pair: (pair[1], pair[0]), reverse=True)
+                for mz_i, value in candidates[:max(0, int(getattr(core_model, "extra_mz_top_k", 20)))]:
+                    if value < float(getattr(core_model, "extra_mz_min_intensity", 0.02)):
+                        continue
+                    key = format_mz_key(float(mz_i))
+                    score = round(min(1.0, max(0.0, value)), round_digits)
+                    predicted_intensity[key] = score
+                    predicted_peaks.append({"mz": mz_i, "product_ion": None, "pred_intensity": score, "source": ("path_conditioned_mass_head" if getattr(core_model, "use_path_mass_residual", False) else "extra_mz_head")})
+                    extras.append({"mz": mz_i, "predicted_intensity": score, "source": ("path_conditioned_mass_head" if getattr(core_model, "use_path_mass_residual", False) else "extra_mz_head")})
             predicted_peaks.sort(key=lambda x: float(x["mz"]), reverse=True)
 
             out = {
@@ -2099,13 +2500,15 @@ def run_inference(
                 "predicted_intensity": predicted_intensity,
                 "predicted_peaks": predicted_peaks,
             }
+            if extras:
+                out["extra_mz_suggestions"] = extras
 
             if save_pred_as_intensity:
                 out["intensity"] = predicted_intensity
 
             if keep_triplets:
                 out["stage1_triplets"] = meta["triplets"]
-
+                
                 out["triplets"] = meta["triplets"]
 
             if keep_input_record:
@@ -2135,7 +2538,6 @@ def run_inference(
 
     return final_outputs
 
-
 def vector_cosine(pred: List[float], gold: List[float]) -> Optional[float]:
     if not pred or not gold or len(pred) != len(gold):
         return None
@@ -2145,10 +2547,8 @@ def vector_cosine(pred: List[float], gold: List[float]) -> Optional[float]:
         return None
     return float(torch.dot(p, y) / (p.norm() * y.norm() + 1e-8))
 
-
 def spectral_cosine(pred: List[float], gold: List[float]) -> Optional[float]:
     return vector_cosine(pred, gold)
-
 
 def pearson_corr(pred: List[float], gold: List[float]) -> Optional[float]:
     if len(pred) < 2 or len(pred) != len(gold):
@@ -2161,7 +2561,6 @@ def pearson_corr(pred: List[float], gold: List[float]) -> Optional[float]:
     if denom.item() <= 1e-12:
         return None
     return float(torch.dot(p, y) / (denom + 1e-8))
-
 
 def rankdata_average(values: List[float]) -> List[float]:
     n = len(values)
@@ -2178,12 +2577,10 @@ def rankdata_average(values: List[float]) -> List[float]:
         i = j
     return ranks
 
-
 def spearman_corr(pred: List[float], gold: List[float]) -> Optional[float]:
     if len(pred) < 2 or len(pred) != len(gold):
         return None
     return pearson_corr(rankdata_average(pred), rankdata_average(gold))
-
 
 def sort_mz_keys(keys: List[Any]) -> List[str]:
     uniq = []
@@ -2196,7 +2593,6 @@ def sort_mz_keys(keys: List[Any]) -> List[str]:
         uniq.append(nk)
     uniq.sort(key=lambda x: float(x))
     return uniq
-
 
 def normalize_spectrum_for_plot(spec: Dict[str, Any]) -> Dict[str, float]:
     if not isinstance(spec, dict) or not spec:
@@ -2214,14 +2610,12 @@ def normalize_spectrum_for_plot(spec: Dict[str, Any]) -> Dict[str, float]:
         return {k: 0.0 for k in out}
     return {k: v / max_v for k, v in out.items()}
 
-
 def spectrum_from_intensity(intensity: Any) -> Dict[str, float]:
     normalized = normalize_intensity_mapping(intensity)
     return {
         key: max(0.0, min(1.0, parse_float(value, 0.0)))
         for key, value in normalized.items()
     }
-
 
 def normalize_product_formula(
     formula: Any,
@@ -2242,7 +2636,6 @@ def normalize_product_formula(
         s += "+"
 
     return s
-
 
 def parse_product_ion_unit(
     product_ion: Any,
@@ -2273,10 +2666,8 @@ def parse_product_ion_unit(
 
     return formula, mz
 
-
 def product_unit_to_str(unit: Tuple[str, str]) -> str:
     return f"{unit[0]} (m/z {unit[1]})"
-
 
 def product_unit_set_from_triplets(record: Dict[str, Any]) -> Set[Tuple[str, str]]:
     raw_triplets = record.get("triplets", record.get("infer_result", []))
@@ -2294,7 +2685,6 @@ def product_unit_set_from_triplets(record: Dict[str, Any]) -> Set[Tuple[str, str
 
     return out
 
-
 def mz_set_from_triplets(record: Dict[str, Any]) -> Set[str]:
     raw_triplets = record.get("triplets", record.get("infer_result", []))
     out: Set[str] = set()
@@ -2309,11 +2699,9 @@ def mz_set_from_triplets(record: Dict[str, Any]) -> Set[str]:
             out.add(mz)
     return out
 
-
 def topk_keys_by_value(spec: Dict[str, float], k: int) -> List[str]:
     items = sorted(spec.items(), key=lambda kv: (float(kv[1]), float(kv[0])), reverse=True)
     return [x[0] for x in items[:max(1, k)]]
-
 
 def metrics_on_keys(pred_spec: Dict[str, float], gold_spec: Dict[str, float], keys: List[str]) -> Dict[str, Any]:
     keys = sort_mz_keys(keys)
@@ -2354,7 +2742,6 @@ def metrics_on_keys(pred_spec: Dict[str, float], gold_spec: Dict[str, float], ke
         "max_abs_error": max(errors) if errors else None,
     }
 
-
 def round_nested(obj: Any, digits: int) -> Any:
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
@@ -2366,7 +2753,6 @@ def round_nested(obj: Any, digits: int) -> Any:
         return [round_nested(v, digits) for v in obj]
     return obj
 
-
 def compute_full_stage1_vs_gold_metrics(
     *,
     pred_spec: Dict[str, float],
@@ -2376,7 +2762,6 @@ def compute_full_stage1_vs_gold_metrics(
 ) -> Dict[str, Any]:
     gold_spec = spectrum_from_intensity(gold_record.get("intensity", {}))
     pred_spec = spectrum_from_intensity(pred_spec)
-
 
     merged_for_stage1_prf = dict(stage1_record)
 
@@ -2395,7 +2780,6 @@ def compute_full_stage1_vs_gold_metrics(
     for k in ["id", "name", "smiles", "SMILES", "formula", "mw"]:
         if k not in merged_for_stage1_prf and k in gold_record:
             merged_for_stage1_prf[k] = gold_record[k]
-
 
     has_standard_pred_field = any(
         isinstance(stage1_record.get(k), list)
@@ -2416,7 +2800,6 @@ def compute_full_stage1_vs_gold_metrics(
     product_missing = product_prf["missing_set"]
     product_extra = product_prf["extra_set"]
 
-
     pred_mz_from_product_units = set(str(x[1]) for x in pred_product_units)
     gold_mz_from_product_units = set(str(x[1]) for x in gold_product_units)
     mz_prf = compute_prf_sets_for_prf(gold_mz_from_product_units, pred_mz_from_product_units)
@@ -2424,7 +2807,6 @@ def compute_full_stage1_vs_gold_metrics(
     matched_mz = mz_prf["hit_set"]
     missing_mz = mz_prf["missing_set"]
     extra_mz = mz_prf["extra_set"]
-
 
     pred_mz_keys_from_intensity = set(sort_mz_keys(list(pred_spec.keys())))
     gold_mz_keys_from_intensity = set(sort_mz_keys(list(gold_spec.keys())))
@@ -2453,7 +2835,6 @@ def compute_full_stage1_vs_gold_metrics(
     missing_intensity_fraction = missing_gold_intensity / gold_total_intensity if gold_total_intensity > 1e-12 else None
     extra_predicted_intensity_fraction = extra_pred_intensity / pred_total_intensity if pred_total_intensity > 1e-12 else None
 
-
     pred_mz_keys = pred_mz_keys_from_intensity
     gold_mz_keys = gold_mz_keys_from_intensity
     union_mz_keys = pred_mz_keys | gold_mz_keys
@@ -2477,14 +2858,12 @@ def compute_full_stage1_vs_gold_metrics(
         gold_top = set(gold_top_list)
         pred_top = set(pred_top_list)
 
-
         if gold_top:
             stage1_hit = len(gold_top & pred_mz_from_product_units)
             stage1_topk_recall = stage1_hit / len(gold_top)
         else:
             stage1_hit = 0
             stage1_topk_recall = None
-
 
         pred_hit = len(pred_top & gold_top)
         pred_precision = pred_hit / len(pred_top) if pred_top else None
@@ -2500,7 +2879,6 @@ def compute_full_stage1_vs_gold_metrics(
         topk_eval[f"top{k}_pred_recall"] = pred_recall
         topk_eval[f"top{k}_pred_f1"] = pred_f1
         topk_eval[f"top{k}_pred_overlap_count"] = pred_hit
-
 
         topk_eval[f"gold_top{k}_covered_by_stage1_mz_recall"] = stage1_topk_recall
         topk_eval[f"pred_top{k}_overlap_gold_top{k}"] = pred_recall
@@ -2585,7 +2963,6 @@ def compute_full_stage1_vs_gold_metrics(
 
     return round_nested(metrics, round_digits)
 
-
 def compute_metrics_for_record(pred: List[float], gold: List[float]) -> Dict[str, Any]:
     if not pred or not gold or len(pred) != len(gold):
         return {}
@@ -2603,12 +2980,10 @@ def compute_metrics_for_record(pred: List[float], gold: List[float]) -> Dict[str
         "spearman": base.get("spearman"),
     }
 
-
 def make_safe_filename(text: str, max_len: int = 80) -> str:
     text = re.sub(r'[\/:*?"<>|]+', '_', str(text)).strip()
     text = re.sub(r'\s+', '_', text)
     return text[:max_len] if text else 'unnamed'
-
 
 def make_compact_plot_filename(prefix_index: int, rid: Any, formula: Any, *, digits: int = 3) -> str:
     try:
@@ -2618,7 +2993,6 @@ def make_compact_plot_filename(prefix_index: int, rid: Any, formula: Any, *, dig
     rid_text = make_safe_filename(f"id{rid}", max_len=24)
     formula_text = make_safe_filename(formula or 'NA', max_len=40)
     return f"{order_text}_{rid_text}_{formula_text}.png"
-
 
 def enrich_outputs_with_gold_evaluation(
     outputs: List[Dict[str, Any]],
@@ -2647,7 +3021,6 @@ def enrich_outputs_with_gold_evaluation(
             for k, v in sorted(gold_spec.items(), key=lambda kv: float(kv[0]))
         }
 
-
         for peak in output.get("predicted_peaks", []):
             mz_key = normalize_mz_value(peak.get("mz"))
             if mz_key is None:
@@ -2660,9 +3033,8 @@ def enrich_outputs_with_gold_evaluation(
 
         output["evaluation"] = full_eval
 
-
         output["metrics"] = {
-
+            
             "stage1_peak_precision": full_eval["stage1_product_ion_prf"]["precision"],
             "stage1_peak_recall": full_eval["stage1_product_ion_prf"]["recall"],
             "stage1_peak_f1": full_eval["stage1_product_ion_prf"]["f1"],
@@ -2671,16 +3043,13 @@ def enrich_outputs_with_gold_evaluation(
             "stage1_product_recall": full_eval["stage1_product_ion_prf"]["recall"],
             "stage1_product_f1": full_eval["stage1_product_ion_prf"]["f1"],
 
-
             "stage1_mz_precision": full_eval["stage1_mz_prf"]["precision"],
             "stage1_mz_recall": full_eval["stage1_mz_prf"]["recall"],
             "stage1_mz_f1": full_eval["stage1_mz_prf"]["f1"],
 
-
             "stage1_weighted_mz_precision": full_eval["stage1_weighted_mz_prf"]["precision"],
             "stage1_weighted_mz_recall": full_eval["stage1_weighted_mz_prf"]["recall"],
             "stage1_weighted_mz_f1": full_eval["stage1_weighted_mz_prf"]["f1"],
-
 
             "weighted_peak_recall_by_gold_intensity": full_eval["stage1_weighted_mz_prf"]["recall"],
 
@@ -2696,7 +3065,6 @@ def enrich_outputs_with_gold_evaluation(
             "pearson_all_gold_label_peaks": full_eval["intensity_on_all_gold_label_peaks"]["pearson"],
             "spearman_all_gold_label_peaks": full_eval["intensity_on_all_gold_label_peaks"]["spearman"],
         }
-
 
         for k in [1, 3, 5, 7, 9, 11, 13, 15]:
             stage1_block = full_eval["stage1_peak_generation"]
@@ -2725,7 +3093,6 @@ def enrich_outputs_with_gold_evaluation(
             output["gold_triplets"] = gold_record.get("triplets", gold_record.get("infer_result", []))
 
     return outputs
-
 
 def _apply_nature_spectrum_style(
     ax,
@@ -2763,7 +3130,6 @@ def _apply_nature_spectrum_style(
         ax.set_yticklabels(['0', '25', '50', '75', '100'])
         ax.axhline(0.0, linewidth=0.9, color='black', zorder=1)
 
-
 def _set_compact_xrange(ax, x_values: List[float]) -> None:
     if not x_values:
         ax.set_xlim(0, 10)
@@ -2773,7 +3139,6 @@ def _set_compact_xrange(ax, x_values: List[float]) -> None:
     span = max(1.0, xmax - xmin)
     margin = max(1.0, span * 0.02)
     ax.set_xlim(max(0.0, xmin - margin), xmax + margin)
-
 
 def plot_mirror_spectrum(
     *,
@@ -2843,7 +3208,6 @@ def plot_mirror_spectrum(
         'num_all_label_peaks': len(gold_keys),
     }
 
-
 def _collect_cosine_ranked_items(
     outputs: List[Dict[str, Any]],
     records: List[Dict[str, Any]],
@@ -2877,7 +3241,6 @@ def _collect_cosine_ranked_items(
         ranked_items.append((score_f, output, record))
 
     return ranked_items
-
 
 def generate_extreme_cosine_plots(
     outputs: List[Dict[str, Any]],
@@ -2954,7 +3317,6 @@ def generate_extreme_cosine_plots(
     print(f'[DONE] Saved {label} plot summary to: {summary_json}')
     return plot_dir
 
-
 def generate_topk_cosine_plots(
     outputs: List[Dict[str, Any]],
     records: List[Dict[str, Any]],
@@ -2975,7 +3337,6 @@ def generate_topk_cosine_plots(
         mode="best",
         plot_dir=plot_dir,
     )
-
 
 def generate_worstk_cosine_plots(
     outputs: List[Dict[str, Any]],
@@ -3068,7 +3429,6 @@ def generate_id_ordered_plots(
     print(f'[DONE] Saved id-ordered plot summary to: {summary_json}')
     return plot_dir
 
-
 def plot_pred_only_spectrum(
     *,
     output_record: Dict[str, Any],
@@ -3106,7 +3466,6 @@ def plot_pred_only_spectrum(
         'plot_file': save_path,
         'num_predicted_label_peaks': len(pred_keys),
     }
-
 
 def generate_pred_only_id_ordered_plots(
     outputs: List[Dict[str, Any]],
@@ -3170,7 +3529,6 @@ def generate_pred_only_id_ordered_plots(
     print(f'[DONE] Saved prediction-only plot summary to: {summary_json}')
     return plot_dir
 
-
 def plot_gold_only_spectrum(
     *,
     gold_record: Dict[str, Any],
@@ -3208,7 +3566,6 @@ def plot_gold_only_spectrum(
         'plot_file': save_path,
         'num_gold_peaks': len(gold_keys),
     }
-
 
 def generate_gold_only_id_ordered_plots(
     gold_records: List[Dict[str, Any]],
@@ -3271,7 +3628,6 @@ def generate_gold_only_id_ordered_plots(
     print(f'[DONE] Saved gold-only plots to: {plot_dir}')
     print(f'[DONE] Saved gold-only plot summary to: {summary_json}')
     return plot_dir
-
 
 def build_metric_descriptions() -> Dict[str, str]:
     return {
@@ -3342,10 +3698,9 @@ def build_metric_descriptions() -> Dict[str, str]:
         "mean_stage1_product_recall_formula_mz": "显式 product-level recall 别名，表示 formula+m/z 同时匹配的召回率。",
     }
 
-
 def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
     metric_keys = [
-
+        
         "stage1_peak_precision",
         "stage1_peak_recall",
         "stage1_peak_f1",
@@ -3353,11 +3708,9 @@ def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
         "stage1_product_recall",
         "stage1_product_f1",
 
-
         "stage1_mz_precision",
         "stage1_mz_recall",
         "stage1_mz_f1",
-
 
         "stage1_weighted_mz_precision",
         "stage1_weighted_mz_recall",
@@ -3390,13 +3743,11 @@ def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
     n_records = len(outputs)
     n_records_with_metrics = 0
 
-
     n_pred_product = 0
     n_gold_product = 0
     n_hit_product = 0
     n_missing_product = 0
     n_extra_product = 0
-
 
     n_pred_mz = 0
     n_gold_mz = 0
@@ -3440,14 +3791,12 @@ def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
             elif isinstance(v, (int, float)) and not math.isnan(float(v)):
                 values[k].append(float(v))
 
-
     micro_product_precision = n_hit_product / n_pred_product if n_pred_product else None
     micro_product_recall = n_hit_product / n_gold_product if n_gold_product else None
     if micro_product_precision is not None and micro_product_recall is not None and (micro_product_precision + micro_product_recall) > 0:
         micro_product_f1 = 2 * micro_product_precision * micro_product_recall / (micro_product_precision + micro_product_recall)
     else:
         micro_product_f1 = None
-
 
     micro_mz_precision = n_hit_mz / n_pred_mz if n_pred_mz else None
     micro_mz_recall = n_hit_mz / n_gold_mz if n_gold_mz else None
@@ -3460,13 +3809,11 @@ def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
         "num_records": n_records,
         "num_records_with_metrics": n_records_with_metrics,
 
-
         "num_predicted_peaks": n_pred_product,
         "num_gold_label_peaks": n_gold_product,
         "num_matched_label_peaks": n_hit_product,
         "num_missing_gold_label_peaks": n_missing_product,
         "num_extra_predicted_label_peaks": n_extra_product,
-
 
         "num_stage1_product_ions": n_pred_product,
         "num_gold_product_ions": n_gold_product,
@@ -3474,13 +3821,11 @@ def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
         "num_missing_gold_product_ions": n_missing_product,
         "num_extra_predicted_product_ions": n_extra_product,
 
-
         "num_predicted_mz_peaks": n_pred_mz,
         "num_gold_mz_peaks": n_gold_mz,
         "num_matched_mz_peaks": n_hit_mz,
         "num_missing_gold_mz_peaks": n_missing_mz,
         "num_extra_predicted_mz_peaks": n_extra_mz,
-
 
         "micro_stage1_peak_precision": micro_product_precision,
         "micro_stage1_peak_recall": micro_product_recall,
@@ -3488,7 +3833,6 @@ def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
         "micro_stage1_product_precision": micro_product_precision,
         "micro_stage1_product_recall": micro_product_recall,
         "micro_stage1_product_f1": micro_product_f1,
-
 
         "micro_stage1_mz_precision": micro_mz_precision,
         "micro_stage1_mz_recall": micro_mz_recall,
@@ -3499,7 +3843,6 @@ def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     for k in metric_keys:
         summary[f"mean_{k}"] = sum(values[k]) / len(values[k]) if values[k] else None
-
 
     summary["mean_stage1_product_recall_formula_mz"] = summary.get("mean_stage1_product_recall")
     summary["mean_stage1_weighted_mz_precision"] = summary.get("mean_stage1_weighted_mz_precision")
@@ -3526,7 +3869,6 @@ def summarize_outputs(outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
     summary["metric_descriptions"] = descriptions
     return summary
 
-
 def build_record_index(records: List[Dict[str, Any]], key_field: str = "id") -> Dict[str, Dict[str, Any]]:
     index: Dict[str, Dict[str, Any]] = {}
     for r in records:
@@ -3537,7 +3879,6 @@ def build_record_index(records: List[Dict[str, Any]], key_field: str = "id") -> 
         if key and key not in index:
             index[key] = r
     return index
-
 
 def pair_stage1_with_gold_records(
     stage1_records: List[Dict[str, Any]],
@@ -3562,10 +3903,19 @@ def pair_stage1_with_gold_records(
         if gold is None:
             missing_gold.append(r)
             if not require_gold:
-                paired_stage1.append(r)
+                stage1_input = dict(r)
+                for intensity_key in (
+                    "intensity",
+                    "intensities",
+                    "gold_intensity",
+                    "gold_spectrum",
+                    "input_spectrum",
+                    "spectrum",
+                ):
+                    stage1_input.pop(intensity_key, None)
+                paired_stage1.append(stage1_input)
                 paired_gold.append({})
             continue
-
 
         stage1_input = dict(r)
         for intensity_key in (
@@ -3603,7 +3953,6 @@ def pair_stage1_with_gold_records(
 
     return paired_stage1, paired_gold, missing_gold
 
-
 def filter_records(
     records: List[Dict[str, Any]],
     *,
@@ -3638,158 +3987,49 @@ def filter_records(
 
     return selected
 
-
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser("Stage2 Tree-Path Attention inference")
-
-    p.add_argument("--stage1_file", type=str, required=True, help="Stage1-generated triplet JSON/JSONL file. This is model input.")
-    p.add_argument("--gold_file", type=str, required=True, help="Gold JSON/JSONL file with true gold triplets and gold intensity.")
-    p.add_argument("--checkpoint", type=str, required=True, help="Path to best.pt or last.pt.")
-    p.add_argument("--output_file", type=str, required=True, help="Output prediction JSONL/JSON file.")
-    p.add_argument("--config_file", type=str, default=None, help="Optional model_config.json. Default: checkpoint directory/model_config.json")
-
-    p.add_argument("--id_min", type=int, default=None, help="Only infer records with id >= id_min.")
-    p.add_argument("--id_max", type=int, default=None, help="Only infer records with id <= id_max.")
-    p.add_argument("--start", type=int, default=0, help="Start offset after id filtering.")
-    p.add_argument("--limit", type=int, default=None, help="Infer at most N records after id filtering and start.")
-
+    p = argparse.ArgumentParser()
+    p.add_argument("--stage1_file", required=True, help="Stage1 prediction JSON/JSONL")
+    p.add_argument("--checkpoint", required=True, help="Stage2 checkpoint")
+    p.add_argument("--output_file", required=True, help="Prediction output JSON/JSONL")
+    p.add_argument("--config_file", default=None)
+    p.add_argument("--id_min", type=int, default=None)
+    p.add_argument("--id_max", type=int, default=None)
+    p.add_argument("--start", type=int, default=0)
+    p.add_argument("--limit", type=int, default=None)
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--prefetch_factor", type=int, default=4)
-    p.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--seed", type=int, default=42)
-
-
     p.add_argument("--max_peaks", type=int, default=None)
     p.add_argument("--max_path_len", type=int, default=None)
     p.add_argument("--max_words_per_token", type=int, default=None)
-
+    p.add_argument("--extra_mz_top_k", type=int, default=20)
+    p.add_argument("--extra_mz_min_intensity", type=float, default=0.02)
     p.add_argument("--amp", action="store_true", default=True)
     p.add_argument("--no_amp", action="store_false", dest="amp")
-    p.add_argument("--amp_dtype", type=str, default="bf16", choices=["bf16", "fp16"])
-    p.add_argument("--compile", action="store_true", default=False, help="Optional torch.compile for inference. Disabled by default for stability.")
-    p.add_argument("--pair_key", type=str, default="id", choices=["id", "smiles"], help="Key used to match Stage1 records with gold records.")
-    p.add_argument("--require_gold", action="store_true", default=True, help="Skip Stage1 records that cannot be matched to gold records.")
-    p.add_argument("--allow_missing_gold", action="store_false", dest="require_gold", help="Allow unmatched Stage1 records; metrics will be missing.")
-    p.add_argument("--keep_gold", action="store_true", default=True, help="Kept for compatibility; gold metrics are computed from --gold_file.")
-    p.add_argument("--keep_stage1_triplets", action="store_true", help="Save Stage1-generated triplets in output.")
-    p.add_argument("--keep_gold_triplets", action="store_true", help="Save gold triplets in output.")
-    p.add_argument("--keep_triplets", action="store_true", help="Alias of --keep_stage1_triplets.")
-    p.add_argument("--keep_input_record", action="store_true", help="Save the full original input record under input_record.")
-    p.add_argument("--save_pred_as_intensity", action="store_true", help="Also save predicted_intensity under field name intensity.")
-    p.add_argument(
-        "--normalize_base_peak",
-        action="store_true",
-        default=True,
-        help=(
-            "Normalize raw Softplus intensities by the strongest candidate "
-            "before clipping/rounding. Enabled by default because this is the "
-            "exact checkpoint-selection path used during training."
-        ),
-    )
-    p.add_argument(
-        "--no_normalize_base_peak",
-        action="store_false",
-        dest="normalize_base_peak",
-        help="Disable base-peak normalization (will not reproduce training validation).",
-    )
-    p.add_argument("--non_strict_load", action="store_true", help="Allow non-strict checkpoint loading. Not recommended unless debugging.")
+    p.add_argument("--amp_dtype", choices=("bf16", "fp16"), default="bf16")
+    p.add_argument("--compile", action="store_true", default=False)
+    p.add_argument("--no_keep_stage1_triplets", action="store_false", dest="keep_stage1_triplets")
+    p.set_defaults(keep_stage1_triplets=True)
+    p.add_argument("--keep_input_record", action="store_true")
+    p.add_argument("--save_pred_as_intensity", action="store_true")
+    p.add_argument("--normalize_base_peak", action="store_true", default=True)
+    p.add_argument("--no_normalize_base_peak", action="store_false", dest="normalize_base_peak")
+    p.add_argument("--non_strict_load", action="store_true")
     p.add_argument("--round_digits", type=int, default=6)
-
-    p.add_argument("--make_topk_cosine_plots", action="store_true", default=True,
-                   help="Generate mirror-spectrum plots for the top-k highest cosine similarity records.")
-    p.add_argument("--no_make_topk_cosine_plots", action="store_false", dest="make_topk_cosine_plots",
-                   help="Disable top-k cosine plot generation.")
-    p.add_argument("--topk_cosine_plots", type=int, default=10,
-                   help="Number of highest-cosine records to visualize. Default: 10")
-    p.add_argument("--cosine_ranking_metric", type=str, default="all_label_peaks",
-                   choices=["predicted_label_peaks", "all_label_peaks"],
-                   help="Which cosine metric to use for ranking the top-k plots.")
-    p.add_argument("--cosine_plot_dir", type=str, default=None,
-                   help="Optional output directory for top-k cosine plots.")
-
-    p.add_argument("--make_worstk_cosine_plots", action="store_true", default=True,
-                   help="Generate mirror-spectrum plots for the worst-k lowest cosine similarity records.")
-    p.add_argument("--no_make_worstk_cosine_plots", action="store_false", dest="make_worstk_cosine_plots",
-                   help="Disable worst-k cosine plot generation.")
-    p.add_argument("--worstk_cosine_plots", type=int, default=10,
-                   help="Number of lowest-cosine records to visualize. Default: 10")
-    p.add_argument("--worst_cosine_plot_dir", type=str, default=None,
-                   help="Optional output directory for worst-k cosine plots.")
-
-    p.add_argument("--make_id_ordered_plots", action="store_true", default=True,
-                   help="Generate mirror-spectrum plots for all records sorted by id.")
-    p.add_argument("--no_make_id_ordered_plots", action="store_false", dest="make_id_ordered_plots",
-                   help="Disable id-ordered plot generation.")
-    p.add_argument("--id_ordered_plot_dir", type=str, default=None,
-                   help="Optional output directory for id-ordered plots.")
-
-    p.add_argument("--make_pred_only_plots", action="store_true", default=True,
-                   help="Generate prediction-only spectrum plots for all records sorted by id.")
-    p.add_argument("--no_make_pred_only_plots", action="store_false", dest="make_pred_only_plots",
-                   help="Disable prediction-only plot generation.")
-    p.add_argument("--pred_only_plot_dir", type=str, default=None,
-                   help="Optional output directory for prediction-only plots.")
-
-    p.add_argument("--make_gold_only_plots", action="store_true", default=True,
-                   help="Generate gold-only spectrum plots for all records sorted by id.")
-    p.add_argument("--no_make_gold_only_plots", action="store_false", dest="make_gold_only_plots",
-                   help="Disable gold-only plot generation.")
-    p.add_argument("--gold_only_plot_dir", type=str, default=None,
-                   help="Optional output directory for gold-only plots.")
-
-
-    p.add_argument("--ablate_intensity_loss", action="store_true", default=None)
-    p.add_argument("--ablate_spectral_loss", action="store_true", default=None)
-    p.add_argument("--ablate_ranking_loss", action="store_true", default=None)
-    p.add_argument("--ablate_base_peak_loss", action="store_true", default=None)
-    p.add_argument("--ablate_strong_peak_loss", action="store_true", default=None)
-    p.add_argument(
-        "--ablate_global_context", "--no_global_context",
-        dest="ablate_global_context", action="store_true", default=None,
-        help="Use the w/o Global molecular context forward path.",
-    )
-    p.add_argument(
-        "--ablate_path_attention", "--no_path_attention",
-        dest="ablate_path_attention", action="store_true", default=None,
-        help="Use masked mean pooling instead of path attention.",
-    )
-    p.add_argument(
-        "--ablate_inter_peak_interaction", "--no_inter_peak_interaction",
-        dest="ablate_inter_peak_interaction", action="store_true", default=None,
-        help="Bypass the cross-peak Transformer interaction.",
-    )
-    p.add_argument(
-        "--ablate_gold_guided_curriculum", "--no_gold_guided_curriculum",
-        dest="ablate_gold_guided_curriculum", action="store_true", default=None,
-        help="Assert that the checkpoint was trained without Gold-guided curriculum.",
-    )
-    p.add_argument(
-        "--allow_ablation_override", action="store_true", default=False,
-        help=(
-            "Allow CLI ablation switches to conflict with checkpoint/model_config "
-            "metadata. Debugging only; not recommended for reported experiments."
-        ),
-    )
-
     return p.parse_args()
-
 
 def main() -> None:
     args = parse_args()
     set_seed(args.seed)
     setup_cuda_inference()
-
     device = torch.device(args.device)
     print(f"[INFO] device={device}")
-    if torch.cuda.is_available():
-        print(f"[INFO] GPU={torch.cuda.get_device_name(0)}")
     print(f"[INFO] checkpoint={args.checkpoint}")
 
     cfg = load_train_config(args.config_file, args.checkpoint)
-    cfg = resolve_inference_ablation_configuration(args, cfg)
-    print_inference_ablation_configuration(cfg)
-
     if args.max_peaks is not None:
         cfg["max_peaks"] = args.max_peaks
     if args.max_path_len is not None:
@@ -3797,46 +4037,32 @@ def main() -> None:
     if args.max_words_per_token is not None:
         cfg["max_words_per_token"] = args.max_words_per_token
 
-    print("[INFO] Inference config:")
-    print(json.dumps(cfg, ensure_ascii=False, indent=2))
-
-    all_stage1_records = load_json_or_jsonl(args.stage1_file)
-    all_gold_records = load_json_or_jsonl(args.gold_file)
-    if not all_stage1_records:
-        raise ValueError(f"No valid Stage1 records loaded from: {args.stage1_file}")
-    if not all_gold_records:
-        raise ValueError(f"No valid gold records loaded from: {args.gold_file}")
-
-    selected_stage1_records = filter_records(
-        all_stage1_records,
+    raw_records = load_json_or_jsonl(args.stage1_file)
+    if not raw_records:
+        raise ValueError(f"No Stage1 records loaded from: {args.stage1_file}")
+    selected = filter_records(
+        raw_records,
         id_min=args.id_min,
         id_max=args.id_max,
         start=args.start,
         limit=args.limit,
     )
-    if not selected_stage1_records:
-        raise ValueError(
-            f"No Stage1 records left after filtering. input={len(all_stage1_records)}, "
-            f"id_min={args.id_min}, id_max={args.id_max}, start={args.start}, limit={args.limit}"
-        )
+    if not selected:
+        raise ValueError("No Stage1 records remain after filtering.")
 
-    records, gold_records, missing_gold_records = pair_stage1_with_gold_records(
-        selected_stage1_records,
-        all_gold_records,
-        pair_key=args.pair_key,
-        require_gold=args.require_gold,
+    records = []
+    target_keys = (
+        "intensity", "intensities", "gold_intensity", "gold_spectrum",
+        "input_spectrum", "spectrum", "gold_triplets", "corrected_triplet",
+        "corrected_triplets", "label_triplets", "_gold_triplets",
     )
-
-    if not records:
-        raise ValueError(
-            "No paired records available. Check --pair_key, --stage1_file, and --gold_file."
-        )
-
-    print(f"[INFO] Loaded Stage1 records: {len(all_stage1_records)}")
-    print(f"[INFO] Loaded gold records: {len(all_gold_records)}")
-    print(f"[INFO] Selected Stage1 records after filtering: {len(selected_stage1_records)}")
-    print(f"[INFO] Paired records for inference/evaluation: {len(records)}")
-    print(f"[INFO] Missing gold records: {len(missing_gold_records)}")
+    for record in selected:
+        row = dict(record)
+        for key in target_keys:
+            row.pop(key, None)
+        if not isinstance(row.get("triplets"), list):
+            row["triplets"] = extract_triplet_list(row)
+        records.append(row)
 
     dataset = Stage2InferDataset(
         records,
@@ -3847,7 +4073,6 @@ def main() -> None:
         morgan_fp_dim=int(cfg["morgan_fp_dim"]),
         morgan_radius=int(cfg["morgan_radius"]),
     )
-
     collator = Stage2InferCollator(
         vocab_size=int(cfg["vocab_size"]),
         max_peaks=int(cfg["max_peaks"]),
@@ -3855,7 +4080,6 @@ def main() -> None:
         max_words_per_token=int(cfg["max_words_per_token"]),
         morgan_fp_dim=int(cfg["morgan_fp_dim"]),
     )
-
     loader_kwargs = {
         "dataset": dataset,
         "batch_size": args.batch_size,
@@ -3868,7 +4092,6 @@ def main() -> None:
     }
     if args.num_workers > 0:
         loader_kwargs["prefetch_factor"] = args.prefetch_factor
-
     loader = DataLoader(**loader_kwargs)
 
     model = StructuredTreePathAttentionModel(
@@ -3884,22 +4107,28 @@ def main() -> None:
         use_global_context=bool(cfg["use_global_context"]),
         use_path_attention=bool(cfg["use_path_attention"]),
         use_inter_peak_interaction=bool(cfg["use_inter_peak_interaction"]),
+        use_bidirectional_path=bool(cfg["use_bidirectional_path"]),
+        use_extra_ion_head=bool(cfg["use_extra_ion_head"]),
+        fuse_extra_head_with_path=bool(cfg.get("fuse_extra_head_with_path", False)),
+        use_path_mass_residual=bool(cfg.get("use_path_mass_residual", False)),
+        reverse_path_swap_numeric=bool(cfg.get("reverse_path_swap_numeric", False)),
+        use_path_parent_refinement=bool(cfg.get("use_path_parent_refinement", False)),
+        mass_head_type=str(cfg.get("mass_head_type", "mlp")),
+        max_mz=int(cfg.get("max_mz", 1024)),
+        intensity_power=float(cfg.get("intensity_power", 1.0)),
     )
-
-    ckpt_meta = load_checkpoint_into_model(
+    model.extra_mz_top_k = int(args.extra_mz_top_k)
+    model.extra_mz_min_intensity = float(args.extra_mz_min_intensity)
+    load_checkpoint_into_model(
         model,
         args.checkpoint,
         device,
         strict=not args.non_strict_load,
     )
-    print(f"[INFO] checkpoint meta: {ckpt_meta}")
-
+    if device.type == "cuda" and torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model, device_ids=list(range(torch.cuda.device_count())))
     if args.compile and hasattr(torch, "compile"):
-        try:
-            print("[INFO] torch.compile enabled for inference")
-            model = torch.compile(model, mode="reduce-overhead")
-        except Exception as e:
-            print(f"[WARN] torch.compile failed, continue without compile: {e}")
+        model = torch.compile(model, mode="reduce-overhead")
 
     outputs = run_inference(
         model=model,
@@ -3908,160 +4137,14 @@ def main() -> None:
         device=device,
         amp=args.amp,
         amp_dtype=args.amp_dtype,
-        keep_gold=args.keep_gold,
-        keep_triplets=(args.keep_triplets or args.keep_stage1_triplets),
+        keep_triplets=args.keep_stage1_triplets,
         keep_input_record=args.keep_input_record,
         save_pred_as_intensity=args.save_pred_as_intensity,
         normalize_base_peak=args.normalize_base_peak,
         round_digits=args.round_digits,
     )
-
-    outputs = enrich_outputs_with_gold_evaluation(
-        outputs,
-        records,
-        gold_records,
-        keep_gold_triplets=args.keep_gold_triplets,
-        round_digits=args.round_digits,
-    )
-
-
     save_json_or_jsonl(outputs, args.output_file)
-    print(f"[DONE] Saved final predictions to: {args.output_file}")
-
-    summary = summarize_outputs(outputs)
-    summary["ablation_configuration"] = {
-        "is_full_model": bool(cfg.get("is_full_model", False)),
-        "active_ablations": list(cfg.get("active_ablations", [])),
-        "ablate_intensity_loss": bool(cfg.get("ablate_intensity_loss", False)),
-        "ablate_spectral_loss": bool(cfg.get("ablate_spectral_loss", False)),
-        "ablate_ranking_loss": bool(cfg.get("ablate_ranking_loss", False)),
-        "ablate_base_peak_loss": bool(cfg.get("ablate_base_peak_loss", False)),
-        "ablate_strong_peak_loss": bool(cfg.get("ablate_strong_peak_loss", False)),
-        "ablate_global_context": bool(cfg.get("ablate_global_context", False)),
-        "ablate_path_attention": bool(cfg.get("ablate_path_attention", False)),
-        "ablate_inter_peak_interaction": bool(cfg.get("ablate_inter_peak_interaction", False)),
-        "ablate_gold_guided_curriculum": bool(cfg.get("ablate_gold_guided_curriculum", False)),
-        "use_global_context": bool(cfg.get("use_global_context", True)),
-        "use_path_attention": bool(cfg.get("use_path_attention", True)),
-        "use_inter_peak_interaction": bool(cfg.get("use_inter_peak_interaction", True)),
-    }
-
-
-    expected_best = ckpt_meta.get("best_cosine")
-    observed_union = summary.get("mean_cosine_union_peaks")
-    reproduction: Dict[str, Any] = {
-        "checkpoint_best_mean_cosine_union_peaks": expected_best,
-        "standalone_mean_cosine_union_peaks": observed_union,
-        "normalize_base_peak": bool(args.normalize_base_peak),
-        "amp": bool(args.amp),
-        "amp_dtype": args.amp_dtype,
-        "batch_size": int(args.batch_size),
-        "round_digits": int(args.round_digits),
-        "active_ablations": list(cfg.get("active_ablations", [])),
-        "use_global_context": bool(cfg.get("use_global_context", True)),
-        "use_path_attention": bool(cfg.get("use_path_attention", True)),
-        "use_inter_peak_interaction": bool(cfg.get("use_inter_peak_interaction", True)),
-    }
-    if isinstance(expected_best, (int, float)) and isinstance(
-        observed_union, (int, float)
-    ):
-        reproduction["absolute_difference"] = abs(
-            float(observed_union) - float(expected_best)
-        )
-    summary["checkpoint_reproduction"] = reproduction
-
-    summary_file = os.path.splitext(args.output_file)[0] + "_summary.json"
-    write_json(summary, summary_file)
-    print(f"[DONE] Saved final summary to: {summary_file}")
-
-    print("[CHECKPOINT REPRODUCTION]")
-    print(json.dumps(reproduction, ensure_ascii=False, indent=2))
-    if (
-        isinstance(reproduction.get("absolute_difference"), (int, float))
-        and reproduction["absolute_difference"] > 1e-3
-    ):
-        print(
-            "[WARN] Standalone inference still differs from checkpoint "
-            "validation by more than 1e-3. Re-run with the same batch size, "
-            "AMP dtype, files, and no --compile; then inspect per-record input "
-            "hashes."
-        )
-
-    print("[SUMMARY]")
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-
-
-    saved_outputs = load_json_or_jsonl(args.output_file)
-    if len(saved_outputs) != len(outputs):
-        raise RuntimeError(
-            f"Saved-output verification failed: in_memory={len(outputs)}, "
-            f"reloaded={len(saved_outputs)}"
-        )
-    print(
-        f"[INFO] Verified saved inference results: {len(saved_outputs)} records. "
-        "Starting plot generation."
-    )
-
-    if args.make_topk_cosine_plots:
-        try:
-            generate_topk_cosine_plots(
-                saved_outputs,
-                gold_records,
-                output_file=args.output_file,
-                top_k=args.topk_cosine_plots,
-                ranking_metric=args.cosine_ranking_metric,
-                round_digits=args.round_digits,
-                plot_dir=args.cosine_plot_dir,
-            )
-        except Exception as e:
-            print(f"[WARN] Failed to generate top-k cosine plots: {e}")
-
-    if args.make_worstk_cosine_plots:
-        try:
-            generate_worstk_cosine_plots(
-                saved_outputs,
-                gold_records,
-                output_file=args.output_file,
-                worst_k=args.worstk_cosine_plots,
-                ranking_metric=args.cosine_ranking_metric,
-                round_digits=args.round_digits,
-                plot_dir=args.worst_cosine_plot_dir,
-            )
-        except Exception as e:
-            print(f"[WARN] Failed to generate worst-k cosine plots: {e}")
-
-    if args.make_id_ordered_plots:
-        try:
-            generate_id_ordered_plots(
-                saved_outputs,
-                gold_records,
-                output_file=args.output_file,
-                round_digits=args.round_digits,
-                plot_dir=args.id_ordered_plot_dir,
-            )
-        except Exception as e:
-            print(f"[WARN] Failed to generate id-ordered plots: {e}")
-
-    if args.make_pred_only_plots:
-        try:
-            generate_pred_only_id_ordered_plots(
-                saved_outputs,
-                output_file=args.output_file,
-                plot_dir=args.pred_only_plot_dir,
-            )
-        except Exception as e:
-            print(f"[WARN] Failed to generate prediction-only plots: {e}")
-
-    if args.make_gold_only_plots:
-        try:
-            generate_gold_only_id_ordered_plots(
-                gold_records,
-                output_file=args.output_file,
-                plot_dir=args.gold_only_plot_dir,
-            )
-        except Exception as e:
-            print(f"[WARN] Failed to generate gold-only plots: {e}")
-
+    print(f"[DONE] predictions={len(outputs)} output={args.output_file}")
 
 if __name__ == "__main__":
     main()
