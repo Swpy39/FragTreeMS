@@ -71,7 +71,6 @@ MECHANISM_LABELS = [
 
 MECH_TO_ID = {m: i + 1 for i, m in enumerate(MECHANISM_LABELS)}
 
-# Path token type ids. 0 is padding.
 TYPE_PAD = 0
 TYPE_ROOT = 1
 TYPE_STRUCTURE_EDGE = 2
@@ -86,15 +85,12 @@ TYPE_TO_NAME = {
     TYPE_ORPHAN_EDGE: "ORPHAN_EDGE",
 }
 
-
 def set_seed(seed: int) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-
 def setup_cuda_high_throughput() -> None:
-    """Enable stable high-throughput settings for NVIDIA Ampere GPUs."""
     torch.autograd.set_detect_anomaly(False)
     if not torch.cuda.is_available():
         return
@@ -120,7 +116,6 @@ def setup_cuda_high_throughput() -> None:
         dynamo.config.accumulated_cache_size_limit = 256
     except Exception:
         pass
-
 
 def load_json_or_jsonl(path: str) -> List[Dict[str, Any]]:
     p = Path(path)
@@ -156,25 +151,21 @@ def load_json_or_jsonl(path: str) -> List[Dict[str, Any]]:
             print(f"[WARN] Bad JSON at {path}:{line_no}: {e}")
     return rows
 
-
 def write_json(obj: Any, path: str) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
-
 
 def append_jsonl(obj: Any, path: str) -> None:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
-
 def parse_float(x: Any, default: float = 0.0) -> float:
     try:
         return float(str(x).strip())
     except Exception:
         return default
-
 
 def normalize_mz_value(x: Any) -> Optional[str]:
     try:
@@ -183,11 +174,8 @@ def normalize_mz_value(x: Any) -> Optional[str]:
     except Exception:
         return None
 
-
 def format_mz_key(mz: float) -> str:
-    """Match the m/z key formatting used by stage2_infer_New.py."""
     return str(int(mz)) if float(mz).is_integer() else str(mz)
-
 
 def parse_mz_from_product(product_ion: Any) -> Optional[str]:
     if not isinstance(product_ion, str):
@@ -197,7 +185,6 @@ def parse_mz_from_product(product_ion: Any) -> Optional[str]:
         return None
     return normalize_mz_value(m.group(1))
 
-
 def parse_precursor_mz(precursor: Any) -> Optional[str]:
     if not isinstance(precursor, str):
         return None
@@ -206,26 +193,16 @@ def parse_precursor_mz(precursor: Any) -> Optional[str]:
         return None
     return normalize_mz_value(m.group(1))
 
-
 def normalize_triplet(x: Any) -> Optional[List[str]]:
     if isinstance(x, list) and len(x) >= 3:
         return [str(x[0]).strip(), str(x[1]).strip(), str(x[2]).strip()]
     return None
 
-
 def get_record_id(record: Dict[str, Any]) -> str:
     rid = record.get("id", record.get("ID", ""))
     return str(rid).strip()
 
-
 def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
-    """
-    Read Stage1 triplets from common infer-file fields.
-
-    The preferred field is ``triplets``. The fallbacks keep this trainer
-    compatible with repaired/unified inference JSONL files that may store the
-    same Stage1 result under another name.
-    """
     for key in (
         "triplets",
         "corrected_triplet",
@@ -238,7 +215,6 @@ def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
         if not isinstance(value, list):
             continue
 
-        # Direct list of triplets: [[source, mechanism, product], ...]
         if all(isinstance(item, list) and len(item) >= 3 for item in value):
             return value
 
@@ -255,9 +231,7 @@ def extract_triplet_list(record: Dict[str, Any]) -> List[Any]:
 
     return []
 
-
 def extract_intensity_value(record: Dict[str, Any]) -> Any:
-    """Return an intensity/spectrum field without changing its scale."""
     for key in (
         "intensity",
         "intensities",
@@ -270,19 +244,7 @@ def extract_intensity_value(record: Dict[str, Any]) -> Any:
             return record[key]
     return {}
 
-
 def normalize_intensity_mapping(value: Any) -> Dict[str, float]:
-    """
-    Convert common spectrum representations to ``{mz: intensity}``.
-
-    Supported inputs:
-      * a mapping from m/z to intensity;
-      * a list of ``[mz, intensity]`` pairs;
-      * a list of dictionaries containing m/z and intensity keys.
-
-    Values are not renormalized here, preserving the original trainer's target
-    semantics. ``build_tree_paths`` still clips targets to [0, 1].
-    """
     result: Dict[str, float] = {}
 
     if isinstance(value, dict):
@@ -316,14 +278,12 @@ def normalize_intensity_mapping(value: Any) -> Dict[str, float]:
 
     return result
 
-
 def smiles_to_morgan_fingerprint(
     smiles: Any,
     *,
     radius: int = 2,
     n_bits: int = 2048,
 ) -> List[float]:
-    """Return a fixed-size Morgan bit fingerprint for global structure context."""
     text = str(smiles or "").strip()
     if not text:
         return [0.0] * int(n_bits)
@@ -342,27 +302,22 @@ def smiles_to_morgan_fingerprint(
     DataStructs.ConvertToNumpyArray(bit_vector, array)
     return array.tolist()
 
-
 def normalize_prediction_by_base_peak(
     prediction: torch.Tensor,
     peak_mask: torch.Tensor,
     eps: float = 1e-6,
 ) -> torch.Tensor:
-    """Normalize each predicted spectrum so its strongest valid peak is 1."""
     masked = prediction * peak_mask.float()
     maximum = masked.max(dim=1, keepdim=True).values.clamp_min(eps)
     return (masked / maximum) * peak_mask.float()
-
 
 def stable_hash_token(token: str, vocab_size: int) -> int:
     h = hashlib.md5(token.encode("utf-8")).hexdigest()
     return int(h, 16) % (vocab_size - 1) + 1
 
-
 def _prefixed_general_tokens(text: Any, namespace: str) -> List[str]:
     values = GENERAL_TOKEN_RE.findall(str(text))
     return [f"{namespace}::{token.lower()}" for token in values]
-
 
 def _smiles_tokens(smiles: Any) -> List[str]:
     text = str(smiles or "").strip()
@@ -371,17 +326,11 @@ def _smiles_tokens(smiles: Any) -> List[str]:
         values = list(text)
     return [f"smiles::{token}" for token in values]
 
-
 def _formula_tokens(formula: Any) -> List[str]:
     values = FORMULA_TOKEN_RE.findall(str(formula or ""))
     return [f"formula::{token}" for token in values]
 
-
 def structured_text_tokens(text: Any) -> List[str]:
-    """
-    Tokenize known Stage2 fields with a SMILES-aware path while preserving the
-    original fixed-size hash vocabulary. No explicit vocabulary is built.
-    """
     raw = str(text or "").strip()
     if not raw:
         return ["special::<empty>"]
@@ -428,7 +377,6 @@ def structured_text_tokens(text: Any) -> List[str]:
 
     return _prefixed_general_tokens(raw, "text") or ["special::<empty>"]
 
-
 def text_to_ids(text: str, vocab_size: int, max_words: int) -> List[int]:
     tokens = structured_text_tokens(text)
     ids = [stable_hash_token(token, vocab_size) for token in tokens[:max_words]]
@@ -444,7 +392,6 @@ class PathToken:
     parent_mz: float
     product_mz: float
 
-
 @dataclass
 class EdgeInfo:
     parent: str
@@ -456,7 +403,6 @@ class EdgeInfo:
     product_mz: float
     order: int
     triplet: List[str]
-
 
 @dataclass
 class PeakPathExample:
@@ -474,14 +420,12 @@ class PeakPathExample:
     true_base_mz: Optional[str]
     morgan_fp: List[float]
     source_type: str
-    # Built exactly once during Dataset construction. The DataLoader no longer
-    # performs regex tokenization, hashing, or Python text processing per epoch.
+
     tensor_cache: Optional[Dict[str, torch.Tensor]] = field(
         default=None,
         repr=False,
     )
     bucket_shape: Tuple[int, int] = (1, 1)
-
 
 def molecule_root_token(record: Dict[str, Any]) -> PathToken:
     name = str(record.get("name", "")).strip()
@@ -497,12 +441,9 @@ def molecule_root_token(record: Dict[str, Any]) -> PathToken:
         product_mz=0.0,
     )
 
-
 def edge_text_from_triplet(t: List[str]) -> str:
-    # Keep the mechanism label in path_mech_ids, but mask its literal text so
-    # the auxiliary mechanism classifier cannot copy the answer from tokens.
-    return f"EDGE precursor={t[0]} mechanism=<masked> product={t[2]}"
 
+    return f"EDGE precursor={t[0]} mechanism=<masked> product={t[2]}"
 
 def mechanism_targets_from_triplets(
     triplets: Any,
@@ -521,7 +462,6 @@ def mechanism_targets_from_triplets(
             continue
         targets[format_mz_key(mz_value)].add(mechanism_id)
     return {key: sorted(values) for key, values in targets.items()}
-
 
 def build_edge_from_triplet(
     t: List[str],
@@ -561,19 +501,12 @@ def build_edge_from_triplet(
         triplet=t,
     )
 
-
 def build_tree_paths(
     record: Dict[str, Any],
     *,
     morgan_radius: int,
     morgan_fp_dim: int,
 ) -> Optional[PeakPathExample]:
-    """
-    Build one unique ROOT-to-peak path per Stage1 candidate peak.
-
-    The path now carries explicit parent m/z and product m/z values. Neutral
-    loss is derived by the model as parent_mz - product_mz.
-    """
     raw_triplets = extract_triplet_list(record)
     if not isinstance(raw_triplets, list):
         return None
@@ -662,8 +595,7 @@ def build_tree_paths(
     intensity = normalize_intensity_mapping(
         extract_intensity_value(record)
     )
-    # stage2_infer_New.py clips every gold intensity to [0, 1] before
-    # computing mean_cosine_union_peaks. Keep the exact same semantics here.
+
     full_gold_intensity = {
         str(mz_key): max(0.0, min(1.0, parse_float(value, 0.0)))
         for mz_key, value in intensity.items()
@@ -734,18 +666,15 @@ def build_tree_paths(
         source_type=str(record.get("_source_type", "")),
     )
 
-
 def _round_up(value: int, multiple: int, maximum: int) -> int:
     value = max(1, min(int(value), int(maximum)))
     multiple = max(1, int(multiple))
     return min(int(maximum), ((value + multiple - 1) // multiple) * multiple)
 
-
 def tensorize_example_once(
     example: PeakPathExample,
     args: argparse.Namespace,
 ) -> None:
-    """Convert one molecule to reusable CPU tensors exactly once."""
     n_peaks = min(args.max_peaks, len(example.mz_values))
     max_path = min(
         args.max_path_len,
@@ -859,7 +788,6 @@ def tensorize_example_once(
         _round_up(max_path, args.path_bucket_multiple, args.max_path_len),
     )
 
-
 class Stage2TreeDataset(Dataset):
     def __init__(
         self,
@@ -946,7 +874,6 @@ class Stage2TreeDataset(Dataset):
     def __getitem__(self, idx: int) -> PeakPathExample:
         return self.examples[idx]
 
-
 def resolve_dataset_example(dataset: Dataset, index: int) -> PeakPathExample:
     if isinstance(dataset, Stage2TreeDataset):
         return dataset.examples[index]
@@ -959,9 +886,7 @@ def resolve_dataset_example(dataset: Dataset, index: int) -> PeakPathExample:
         raise TypeError(f"Unsupported bucket dataset item: {type(item)!r}")
     return item
 
-
 class BucketBatchSampler(Sampler[List[int]]):
-    """Shape-aware sampler producing a small, stable set of compiled graphs."""
     def __init__(
         self,
         dataset: Dataset,
@@ -983,9 +908,7 @@ class BucketBatchSampler(Sampler[List[int]]):
         self.epoch = 0
 
     def __len__(self) -> int:
-        # Exact for ordinary loaders. For weighted replay, estimate expected
-        # samples per bucket from the sampling probabilities so the LR
-        # scheduler remains close to the actual number of optimizer steps.
+
         bucket_mass: Dict[Tuple[int, int], float] = defaultdict(float)
         if self.sample_weights is None:
             for index in range(len(self.dataset)):
@@ -1038,9 +961,6 @@ class BucketBatchSampler(Sampler[List[int]]):
                 batches.append(bucket_indices[begin: begin + self.batch_size])
             remainders.extend(bucket_indices[full_count:])
 
-        # Pack the small tail of neighbouring buckets together. This avoids
-        # dozens of under-filled GPU steps when the dataset has many shapes;
-        # the collator simply pads each mixed tail batch to its largest bucket.
         if not self.drop_last and remainders:
             remainders.sort(
                 key=lambda index: resolve_dataset_example(
@@ -1055,9 +975,7 @@ class BucketBatchSampler(Sampler[List[int]]):
             batches = [batches[i] for i in order]
         yield from batches
 
-
 class Stage2Collator:
-    """Fast collator: tensor copy/padding only; no tokenization or hashing."""
     def __init__(self, args: argparse.Namespace) -> None:
         self.max_peaks = args.max_peaks
         self.max_path_len = args.max_path_len
@@ -1176,9 +1094,7 @@ class Stage2Collator:
             "meta": meta,
         }
 
-
 class BidirectionalPathMassResNet(nn.Module):
-    """Bidirectional path-conditioned spectrum head with forward/reverse nominal-mass branches."""
     def __init__(self, input_dim: int, num_outputs: int, hidden_units: int = 2000,
                  dropout_rate: float = 0.25) -> None:
         super().__init__()
@@ -1210,7 +1126,6 @@ class BidirectionalPathMassResNet(nn.Module):
         residual = self.block_up(residual)
         h = self._safe_batch_norm(self.final_bn, h + residual)
         return self.output(F.relu(h))
-
 
 class StructuredTreePathAttentionModel(nn.Module):
     PATH_NUMERIC_DIM = 9
@@ -1265,13 +1180,6 @@ class StructuredTreePathAttentionModel(nn.Module):
         if self.use_path_parent_refinement and not self.use_path_mass_residual:
             raise ValueError("path-parent refinement requires the path-conditioned mass spectrum branch")
 
-        # Ablation switches.
-        #
-        # IMPORTANT:
-        # All defaults are True, so running this script without any ablation
-        # flags follows the exact same model path as the original full model.
-        # The switches only change the forward path when explicitly enabled
-        # through the corresponding CLI ablation flags.
         self.use_global_context = bool(use_global_context)
         self.use_path_attention = bool(use_path_attention)
         self.use_inter_peak_interaction = bool(use_inter_peak_interaction)
@@ -1549,13 +1457,6 @@ class StructuredTreePathAttentionModel(nn.Module):
             self.peak_mz_features(mz, mw_for_peak)
         )
 
-        # ------------------------------------------------------------
-        # Global molecular context.
-        #
-        # Full model (default): unchanged from the original implementation.
-        # Ablation: skip Morgan-fingerprint encoding and the local-global
-        # gated fusion completely.
-        # ------------------------------------------------------------
         if self.use_global_context:
             global_embedding = self.global_mol_encoder(morgan_fp.float())
             global_expand = global_embedding.unsqueeze(1).expand(-1, max_p, -1)
@@ -1573,8 +1474,6 @@ class StructuredTreePathAttentionModel(nn.Module):
         flat_path_mask = path_mask.reshape(bsz * max_p, max_l)
         flat_peak_mask = peak_mask.reshape(bsz * max_p)
 
-        # Dense, compile-friendly path attention. Invalid rows receive one
-        # temporary zero key and are masked back to zero after attention.
         valid = flat_peak_mask & flat_path_mask.any(dim=-1)
         valid_f = valid.to(flat_path.dtype).view(-1, 1, 1)
         safe_flat_path = flat_path * valid_f
@@ -1582,14 +1481,7 @@ class StructuredTreePathAttentionModel(nn.Module):
         safe_flat_path_mask = torch.cat(
             [safe_first_column, flat_path_mask[:, 1:]], dim=1
         )
-        # ------------------------------------------------------------
-        # ROOT-to-peak path aggregation.
-        #
-        # Full model (default): original multi-head path attention.
-        # Ablation: masked mean pooling over the same path tokens, so the
-        # input information and downstream network remain unchanged while
-        # only the learnable attention operation is removed.
-        # ------------------------------------------------------------
+
         if self.use_path_attention:
             attended, _ = self.path_attn(
                 query=flat_query,
@@ -1618,8 +1510,7 @@ class StructuredTreePathAttentionModel(nn.Module):
             reverse_embedding = torch.gather(
                 flat_path, 1, index_3d.expand(-1, -1, flat_path.size(-1))
             )
-            # Re-index positional embeddings from the product side without
-            # re-embedding every token id (which created a large B*P*L*W*D tensor).
+
             old_position_embedding = self.path_pos_embedding(reverse_indices)
             new_position_embedding = self.path_pos_embedding(reverse_positions)
             reverse_embedding = (
@@ -1667,9 +1558,6 @@ class StructuredTreePathAttentionModel(nn.Module):
         path_representation = path_representation * valid.to(path_representation.dtype).unsqueeze(-1)
         peak_representation = path_representation.reshape(bsz, max_p, self.d_model)
 
-        # Mechanism prediction uses a clean path summary with the explicit
-        # mechanism embedding removed. Its expected mechanism embedding then
-        # conditions the intensity representation in every ablation arm.
         flat_mech_ids = path_mech_ids.reshape(bsz * max_p, max_l)
         flat_mech_embedding = self.mechanism_embedding(flat_mech_ids.clamp_min(0))
         clean_flat_path = flat_path - flat_mech_embedding
@@ -1692,24 +1580,9 @@ class StructuredTreePathAttentionModel(nn.Module):
             peak_representation + candidate_mechanism_gate * candidate_mechanism_context
         )
 
-        # ------------------------------------------------------------
-        # Inter-peak interaction.
-        #
-        # Full model (default): exactly the original global molecule token +
-        # Transformer interaction + context fusion.
-        #
-        # w/o Global molecular context:
-        #   the Transformer still models interactions among candidate peaks,
-        #   but no Morgan-derived molecule token or molecule-context fusion
-        #   is used.
-        #
-        # w/o Inter-peak interaction:
-        #   every candidate peak is sent directly to the output head after
-        #   its local path representation is constructed.
-        # ------------------------------------------------------------
         if self.use_inter_peak_interaction:
             if self.use_global_context:
-                # Original full-model path.
+                
                 molecule_token = self.global_token_proj(global_embedding).unsqueeze(1)
                 interaction_input = torch.cat(
                     [molecule_token, peak_representation],
@@ -1740,14 +1613,13 @@ class StructuredTreePathAttentionModel(nn.Module):
                     interacted + context_gate * context_expand
                 )
             else:
-                # Keep peak-to-peak Transformer interaction while removing
-                # all global molecular context.
+
                 interacted = self.tree_interaction(
                     peak_representation,
                     src_key_padding_mask=~peak_mask,
                 )
         else:
-            # Independent candidate-peak prediction after local path encoding.
+            
             interacted = peak_representation
 
         output_logits = self.output_head(interacted).squeeze(-1)
@@ -1883,8 +1755,7 @@ class StructuredTreePathAttentionModel(nn.Module):
             prediction = path_corrected_spectrum.gather(
                 1, candidate_bins
             ) * peak_mask.float()
-            # Preserve candidate and mass mechanism logits for their supervised
-            # losses; add spectrum diagnostics without replacing prior outputs.
+
             aux_outputs.update({
                 "path_delta_raw": path_delta,
                 "global_spectrum_raw": global_spectrum,
@@ -1931,7 +1802,6 @@ class StructuredTreePathAttentionModel(nn.Module):
             return prediction, ranking_logits, dense_prediction
         return prediction
 
-
 def build_true_base_mask(
     base_index: torch.Tensor,
     base_present: torch.Tensor,
@@ -1941,7 +1811,6 @@ def build_true_base_mask(
     result = torch.zeros_like(peak_mask, dtype=torch.bool)
     result.scatter_(1, safe_index.unsqueeze(1), base_present.unsqueeze(1))
     return result & peak_mask
-
 
 def masked_weighted_smooth_l1(
     pred: torch.Tensor,
@@ -1957,7 +1826,6 @@ def masked_weighted_smooth_l1(
     strong_peak_threshold: float = 0.30,
     strong_peak_gamma: float = 1.4,
 ) -> torch.Tensor:
-    """Low-weight continuous intensity regression over every candidate."""
     mask_f = mask.float()
     true_base_mask = build_true_base_mask(base_index, base_present, mask)
     strong_mask = (target >= strong_peak_threshold) & mask
@@ -1972,32 +1840,6 @@ def masked_weighted_smooth_l1(
     per_molecule = (token_loss * effective).sum(dim=1) / effective.sum(dim=1).clamp_min(1.0)
     valid = mask.any(dim=1).float()
     return (per_molecule * valid).sum() / valid.sum().clamp_min(1.0)
-
-
-def strong_peak_regression_loss(
-    pred: torch.Tensor,
-    target: torch.Tensor,
-    mask: torch.Tensor,
-    *,
-    threshold: float = 0.30,
-    top_k: int = 5,
-    beta: float = 0.04,
-) -> torch.Tensor:
-    """Vectorized strong/top-k regression without Python-GPU synchronization."""
-    peak_count = target.size(1)
-    k = max(1, min(int(top_k), peak_count))
-    masked_target = target.masked_fill(~mask, -1.0e4)
-    top_indices = torch.topk(masked_target, k=k, dim=1).indices
-    top_mask = torch.zeros_like(mask, dtype=torch.bool)
-    top_mask.scatter_(1, top_indices, True)
-    selected = mask & (target > 0.0) & ((target >= threshold) | top_mask)
-
-    token_loss = F.smooth_l1_loss(pred, target, beta=beta, reduction="none")
-    weights = (1.0 + 2.0 * target.clamp_min(0.0)) * selected.float()
-    per_molecule = (token_loss * weights).sum(dim=1) / weights.sum(dim=1).clamp_min(1.0)
-    valid = selected.any(dim=1).float()
-    return (per_molecule * valid).sum() / valid.sum().clamp_min(1.0)
-
 
 def union_space_cosine_values(
     pred: torch.Tensor,
@@ -2016,7 +1858,6 @@ def union_space_cosine_values(
     cosine = numerator / (prediction_norm * complete_gold_norm + eps)
     return cosine, valid
 
-
 def union_space_cosine_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
@@ -2029,54 +1870,6 @@ def union_space_cosine_loss(
     )
     valid_f = valid.float()
     return ((1.0 - cosine) * valid_f).sum() / valid_f.sum().clamp_min(1.0)
-
-
-def tree_ranking_loss(
-    pred: torch.Tensor,
-    target: torch.Tensor,
-    mask: torch.Tensor,
-    *,
-    min_label_gap: float = 0.02,
-    base_margin: float = 0.03,
-    gap_margin_scale: float = 0.20,
-) -> torch.Tensor:
-    """Fully vectorized pairwise ranking over all candidate intensities."""
-    y_diff = target.unsqueeze(2) - target.unsqueeze(1)
-    p_diff = pred.unsqueeze(2) - pred.unsqueeze(1)
-    pair_valid = mask.unsqueeze(2) & mask.unsqueeze(1)
-    pair_mask = pair_valid & (y_diff > min_label_gap)
-    margin = base_margin + gap_margin_scale * y_diff.clamp(0.0, 1.0)
-    pair_loss = F.relu(margin - p_diff) * y_diff.clamp_min(0.0)
-    pair_mask_f = pair_mask.float()
-    per_molecule = (pair_loss * pair_mask_f).sum(dim=(1, 2)) / pair_mask_f.sum(dim=(1, 2)).clamp_min(1.0)
-    valid = pair_mask.any(dim=(1, 2)).float()
-    return (per_molecule * valid).sum() / valid.sum().clamp_min(1.0)
-
-
-
-def base_peak_classification_loss(
-    logits: torch.Tensor,
-    base_index: torch.Tensor,
-    base_present: torch.Tensor,
-    peak_mask: torch.Tensor,
-    label_smoothing: float = 0.02,
-) -> torch.Tensor:
-    valid = base_present & (base_index >= 0) & peak_mask.any(dim=1)
-    selected_logits = logits.masked_fill(~peak_mask, -1.0e4)
-    safe_target = base_index.clamp(min=0)
-    log_probability = F.log_softmax(selected_logits, dim=1)
-    nll = -log_probability.gather(1, safe_target.unsqueeze(1)).squeeze(1)
-    candidate_count = peak_mask.sum(dim=1).float().clamp_min(1.0)
-    # Smooth only across valid candidates. PyTorch's built-in label_smoothing
-    # would also allocate probability mass to masked padding classes whose
-    # logits are -1e4, producing an artificially enormous loss.
-    smooth = -(log_probability * peak_mask.float()).sum(dim=1) / candidate_count
-    smoothing = float(max(0.0, min(1.0, label_smoothing)))
-    per_sample = (1.0 - smoothing) * nll + smoothing * smooth
-    normalized = per_sample / torch.log(candidate_count.clamp_min(2.0)).clamp_min(math.log(2.0))
-    valid_f = valid.float()
-    return (normalized * valid_f).sum() / valid_f.sum().clamp_min(1.0)
-
 
 def mechanism_soft_cross_entropy(
     logits: torch.Tensor,
@@ -2094,10 +1887,8 @@ def mechanism_soft_cross_entropy(
     valid_f = valid.float()
     return (per_item * valid_f).sum() / valid_f.sum().clamp_min(1.0)
 
-
 def compute_loss(
     pred_raw: torch.Tensor,
-    ranking_logits: torch.Tensor,
     target: torch.Tensor,
     mask: torch.Tensor,
     base_index: torch.Tensor,
@@ -2110,12 +1901,9 @@ def compute_loss(
     aux_outputs: Optional[Dict[str, torch.Tensor]] = None,
     dense_mechanism_target: Optional[torch.Tensor] = None,
     dense_mechanism_mask: Optional[torch.Tensor] = None,
-    path_parent_mz: Optional[torch.Tensor] = None,
-    path_product_mz: Optional[torch.Tensor] = None,
-    path_mask: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     pred = normalize_prediction_by_base_peak(pred_raw, mask)
-    l_int = masked_weighted_smooth_l1(
+    loss_intensity = masked_weighted_smooth_l1(
         pred,
         target,
         mask,
@@ -2132,252 +1920,55 @@ def compute_loss(
         candidate_bins = mz.round().long().clamp(min=0, max=args.max_mz)
         merged = dense_prediction.scatter(1, candidate_bins, pred)
         dot = (merged * dense_gold).sum(dim=1)
-        denom = torch.sqrt(merged.square().sum(dim=1).clamp_min(1e-12)) * torch.sqrt(dense_gold.square().sum(dim=1).clamp_min(1e-12))
+        denom = torch.sqrt(merged.square().sum(dim=1).clamp_min(1e-12))
+        denom = denom * torch.sqrt(dense_gold.square().sum(dim=1).clamp_min(1e-12))
         valid_spec = dense_gold.square().sum(dim=1) > 1e-12
         cosine = dot / denom.clamp_min(1e-8)
-        l_union = ((1.0 - cosine) * valid_spec.float()).sum() / valid_spec.float().sum().clamp_min(1.0)
+        loss_spectral = ((1.0 - cosine) * valid_spec.float()).sum() / valid_spec.float().sum().clamp_min(1.0)
         dense_dot = (dense_prediction * dense_gold).sum(dim=1)
-        dense_denom = torch.sqrt(dense_prediction.square().sum(dim=1).clamp_min(1e-12)) * torch.sqrt(dense_gold.square().sum(dim=1).clamp_min(1e-12))
+        dense_denom = torch.sqrt(dense_prediction.square().sum(dim=1).clamp_min(1e-12))
+        dense_denom = dense_denom * torch.sqrt(dense_gold.square().sum(dim=1).clamp_min(1e-12))
         dense_cos = dense_dot / dense_denom.clamp_min(1e-8)
-        l_extra_aux = ((1.0 - dense_cos) * valid_spec.float()).sum() / valid_spec.float().sum().clamp_min(1.0)
+        loss_extra_aux = ((1.0 - dense_cos) * valid_spec.float()).sum() / valid_spec.float().sum().clamp_min(1.0)
     else:
-        l_union = union_space_cosine_loss(pred, target, mask, full_gold_l2_norm)
-        l_extra_aux = l_union.new_zeros(())
+        loss_spectral = union_space_cosine_loss(pred, target, mask, full_gold_l2_norm)
+        loss_extra_aux = loss_spectral.new_zeros(())
 
-    l_path_cosine = l_union.new_zeros(())
-    l_path_effect = l_union.new_zeros(())
-    l_mass_coordinate_aux = l_union.new_zeros(())
-    l_batch_spectral_relation = l_union.new_zeros(())
-    l_path_transition = l_union.new_zeros(())
-    l_mechanism = l_union.new_zeros(())
-    if (
-        args.use_path_mass_residual
-        and aux_outputs is not None
-        and dense_gold is not None
-        and mz is not None
-    ):
-        target_f = target.float()
-        pred_f = pred.float()
-        valid_candidate = mask.bool()
-        candidate_dot = (pred_f * target_f * valid_candidate.float()).sum(dim=1)
-        candidate_pred_norm = torch.sqrt(
-            (pred_f.square() * valid_candidate.float()).sum(dim=1).clamp_min(1e-12)
-        )
-        candidate_gold_norm = torch.sqrt(
-            (target_f.square() * valid_candidate.float()).sum(dim=1).clamp_min(1e-12)
-        )
-        candidate_valid = valid_candidate.any(dim=1).float()
-        candidate_cos = candidate_dot / (
-            candidate_pred_norm * candidate_gold_norm
-        ).clamp_min(1e-8)
-        l_path_cosine = (
-            ((1.0 - candidate_cos) * candidate_valid).sum()
-            / candidate_valid.sum().clamp_min(1.0)
-        )
-
-        global_spectrum = aux_outputs["global_spectrum_raw"].float()
-        global_spectrum = global_spectrum / global_spectrum.amax(
-            dim=1, keepdim=True
-        ).clamp_min(1e-8)
-        candidate_bins = mz.round().long().clamp(min=0, max=args.max_mz)
-        baseline_candidate = global_spectrum.gather(1, candidate_bins)
-        target_path_delta = (
-            torch.log1p(target_f.clamp(0.0, 1.0))
-            - torch.log1p(baseline_candidate.clamp(0.0, 1.0))
-        )
-        delta_error = F.smooth_l1_loss(
-            aux_outputs["path_delta_raw"].float(),
-            target_path_delta,
-            reduction="none",
-            beta=0.10,
-        )
-        mask_f = valid_candidate.float()
-        per_molecule_delta = (delta_error * mask_f).sum(dim=1) / mask_f.sum(
-            dim=1
-        ).clamp_min(1.0)
-        valid_delta = valid_candidate.any(dim=1).float()
-        l_path_effect = (
-            (per_molecule_delta * valid_delta).sum()
-            / valid_delta.sum().clamp_min(1.0)
-        )
-
-        def dense_cosine_loss(pred_spectrum: torch.Tensor) -> torch.Tensor:
-            ps = pred_spectrum.float()
-            gs = dense_gold.float()
-            dot = (ps * gs).sum(dim=1)
-            denom = torch.sqrt(ps.square().sum(dim=1).clamp_min(1e-12))
-            denom = denom * torch.sqrt(gs.square().sum(dim=1).clamp_min(1e-12))
-            cosine = dot / denom.clamp_min(1e-8)
-            valid = (gs.square().sum(dim=1) > 1e-12).float()
-            return ((1.0 - cosine) * valid).sum() / valid.sum().clamp_min(1.0)
-
-        l_forward = dense_cosine_loss(aux_outputs["forward_spectrum_raw"])
-        l_reverse = dense_cosine_loss(aux_outputs["reverse_spectrum_raw"])
-        l_mass_coordinate_aux = 0.5 * (l_forward + l_reverse)
-
-    # Batch-level relational supervision: preserve the gold pairwise cosine
-    # geometry between different molecules while learning each full spectrum.
-    # The target Gram matrix is computed from CHS training spectra only.
-    if (
-        args.lambda_batch_spectral_relation > 0.0
-        and dense_prediction is not None
-        and dense_gold is not None
-    ):
-        relation_prediction = dense_prediction.float()
-        if mz is not None and pred.shape == mz.shape:
-            relation_bins = mz.round().long().clamp(min=0, max=args.max_mz)
-            relation_prediction = relation_prediction.scatter(
-                1, relation_bins, pred.float()
-            )
-        pred_norm = F.normalize(relation_prediction, p=2, dim=1, eps=1e-8)
-        gold_norm = F.normalize(dense_gold.float(), p=2, dim=1, eps=1e-8)
-        pred_gram = pred_norm @ pred_norm.transpose(0, 1)
-        gold_gram = gold_norm @ gold_norm.transpose(0, 1)
-        valid_rows = dense_gold.float().square().sum(dim=1) > 1e-12
-        pair_mask = valid_rows[:, None] & valid_rows[None, :]
-        pair_mask = torch.triu(pair_mask, diagonal=1)
-        if pair_mask.any():
-            l_batch_spectral_relation = (
-                (pred_gram - gold_gram).square()[pair_mask].mean()
-            )
-
-    mechanism_losses: List[torch.Tensor] = []
-    if (
-        aux_outputs is not None
-        and dense_mechanism_target is not None
-        and dense_mechanism_mask is not None
-        and mz is not None
-    ):
+    loss_mechanism = loss_spectral.new_zeros(())
+    if aux_outputs is not None and dense_mechanism_target is not None and dense_mechanism_mask is not None and mz is not None:
         mechanism_bins = mz.round().long().clamp(min=0, max=args.max_mz)
         candidate_target = dense_mechanism_target.gather(
             1,
-            mechanism_bins.unsqueeze(-1).expand(
-                -1, -1, dense_mechanism_target.size(-1)
-            ),
+            mechanism_bins.unsqueeze(-1).expand(-1, -1, dense_mechanism_target.size(-1)),
         )
-        candidate_target_mask = dense_mechanism_mask.gather(1, mechanism_bins)
-        candidate_target_mask = candidate_target_mask & mask.bool()
+        candidate_mask = dense_mechanism_mask.gather(1, mechanism_bins) & mask.bool()
+        mechanism_losses = []
         candidate_logits = aux_outputs.get("candidate_mechanism_logits")
         if candidate_logits is not None:
             mechanism_losses.append(
-                mechanism_soft_cross_entropy(
-                    candidate_logits, candidate_target, candidate_target_mask
-                )
+                mechanism_soft_cross_entropy(candidate_logits, candidate_target, candidate_mask)
             )
         mass_logits = aux_outputs.get("mass_mechanism_logits")
         if mass_logits is not None:
             mechanism_losses.append(
-                mechanism_soft_cross_entropy(
-                    mass_logits, dense_mechanism_target, dense_mechanism_mask
-                )
+                mechanism_soft_cross_entropy(mass_logits, dense_mechanism_target, dense_mechanism_mask)
             )
         if mechanism_losses:
-            l_mechanism = torch.stack(mechanism_losses).mean()
+            loss_mechanism = torch.stack(mechanism_losses).mean()
 
-    # Parent-to-product log-intensity supervision. Use the dense m/z branch when
-    # enabled; otherwise match path endpoints to Stage-1 candidate bins so the
-    # candidate-only ablation receives a real gradient too.
-    l_path_transition = l_union.new_zeros(())
-    if (
-        args.lambda_path_transition > 0.0
-        and dense_gold is not None
-        and mz is not None
-        and path_parent_mz is not None
-        and path_product_mz is not None
-        and path_mask is not None
-    ):
-        parent_bins = path_parent_mz.round().long().clamp(min=0, max=args.max_mz)
-        product_bins = path_product_mz.round().long().clamp(min=0, max=args.max_mz)
-        flat_parent = parent_bins.reshape(parent_bins.size(0), -1)
-        flat_product = product_bins.reshape(product_bins.size(0), -1)
-        parent_gold = dense_gold.float().gather(1, flat_parent)
-        product_gold = dense_gold.float().gather(1, flat_product)
-        edge_mask = (
-            path_mask.reshape(path_mask.size(0), -1).bool()
-            & (flat_parent > 0)
-            & (flat_product > 0)
-            & (flat_parent != flat_product)
-            & (parent_gold > 1e-7)
-            & (product_gold > 1e-7)
-        )
-        if args.use_extra_ion_head or args.use_path_mass_residual:
-            parent_pred = dense_prediction.float().gather(1, flat_parent).clamp_min(0.0)
-            product_pred = dense_prediction.float().gather(1, flat_product).clamp_min(0.0)
-        else:
-            candidate_bins = mz.round().long().clamp(min=0, max=args.max_mz)
-            candidate_valid = mask.bool()
-            parent_match = (candidate_bins.unsqueeze(1) == flat_parent.unsqueeze(-1)) & candidate_valid.unsqueeze(1)
-            product_match = (candidate_bins.unsqueeze(1) == flat_product.unsqueeze(-1)) & candidate_valid.unsqueeze(1)
-            has_parent = parent_match.any(dim=-1)
-            has_product = product_match.any(dim=-1)
-            parent_idx = parent_match.float().argmax(dim=-1)
-            product_idx = product_match.float().argmax(dim=-1)
-            parent_pred = pred.gather(1, parent_idx).clamp_min(0.0)
-            product_pred = pred.gather(1, product_idx).clamp_min(0.0)
-            edge_mask = edge_mask & has_parent & has_product
-        target_delta = torch.log1p(product_gold.clamp_min(0.0)) - torch.log1p(parent_gold.clamp_min(0.0))
-        pred_delta = torch.log1p(product_pred) - torch.log1p(parent_pred)
-        edge_loss = F.smooth_l1_loss(pred_delta, target_delta, reduction='none', beta=0.10)
-        edge_count = edge_mask.float().sum(dim=1)
-        per_molecule = (edge_loss * edge_mask.float()).sum(dim=1) / edge_count.clamp_min(1.0)
-        valid_molecule = (edge_count > 0).float()
-        l_path_transition = (per_molecule * valid_molecule).sum() / valid_molecule.sum().clamp_min(1.0)
-
-    l_rank = tree_ranking_loss(
-        pred,
-        target,
-        mask,
-        min_label_gap=args.rank_min_gap,
-        base_margin=args.rank_base_margin,
-        gap_margin_scale=args.rank_gap_margin_scale,
-    )
-    l_base = base_peak_classification_loss(
-        ranking_logits,
-        base_index,
-        base_present,
-        mask,
-        label_smoothing=args.base_label_smoothing,
-    )
-    l_strong = strong_peak_regression_loss(
-        pred,
-        target,
-        mask,
-        threshold=args.strong_peak_threshold,
-        top_k=args.strong_peak_topk,
-        beta=args.smooth_l1_beta,
-    )
     total = (
-        args.lambda_intensity * l_int
-        + args.lambda_spectral * l_union
-        + args.lambda_extra_aux * l_extra_aux
-        + args.lambda_path_cosine * l_path_cosine
-        + args.lambda_path_effect * l_path_effect
-        + args.lambda_mass_coordinate_aux * l_mass_coordinate_aux
-        + args.lambda_batch_spectral_relation * l_batch_spectral_relation
-        + args.lambda_path_transition * l_path_transition
-        + args.lambda_mechanism * l_mechanism
-        + args.lambda_rank * l_rank
-        + args.lambda_base * l_base
-        + args.lambda_strong * l_strong
+        args.lambda_intensity * loss_intensity
+        + args.lambda_spectral * loss_spectral
+        + args.lambda_extra_aux * loss_extra_aux
+        + args.lambda_mechanism * loss_mechanism
     )
     return total, {
         "loss_total": total.detach(),
-        "loss_intensity": l_int.detach(),
-        "loss_union_cosine": l_union.detach(),
-        "loss_spectral": l_union.detach(),
-        "loss_extra_aux": l_extra_aux.detach(),
-        "loss_path_cosine": l_path_cosine.detach(),
-        "loss_path_effect": l_path_effect.detach(),
-        "loss_mass_coordinate_aux": l_mass_coordinate_aux.detach(),
-        "loss_batch_spectral_relation": l_batch_spectral_relation.detach(),
-        "loss_path_transition": l_path_transition.detach(),
-        "loss_mechanism": l_mechanism.detach(),
-        "loss_rank": l_rank.detach(),
-        "loss_base": l_base.detach(),
-        "loss_strong": l_strong.detach(),
+        "loss_intensity": loss_intensity.detach(),
+        "loss_spectral": loss_spectral.detach(),
+        "loss_extra_aux": loss_extra_aux.detach(),
+        "loss_mechanism": loss_mechanism.detach(),
     }
-
-
 
 def make_dataset(
     records: List[Dict[str, Any]],
@@ -2390,12 +1981,10 @@ def make_dataset(
     dataset = Stage2TreeDataset(records, source_type=source_type, args=args)
     return dataset if len(dataset) > 0 else None
 
-
 def _loader_worker_init(worker_id: int) -> None:
     seed = torch.initial_seed() % (2 ** 32)
     random.seed(seed)
     np.random.seed(seed)
-
 
 def make_loader_from_dataset(
     dataset: Optional[Dataset],
@@ -2423,7 +2012,6 @@ def make_loader_from_dataset(
     if args.num_workers > 0:
         loader_kwargs["prefetch_factor"] = args.prefetch_factor
     return DataLoader(**loader_kwargs)
-
 
 def make_stage1_replay_loader(
     stage1_dataset: Optional[Stage2TreeDataset],
@@ -2469,13 +2057,11 @@ def make_stage1_replay_loader(
     )
     return DataLoader(**loader_kwargs)
 
-
 def move_batch(batch: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
     return {
         key: (value.to(device, non_blocking=True) if torch.is_tensor(value) else value)
         for key, value in batch.items()
     }
-
 
 class ModelEMA:
     def __init__(self, model: nn.Module, decay: float = 0.999) -> None:
@@ -2503,7 +2089,6 @@ class ModelEMA:
 
     def state_dict(self) -> Dict[str, torch.Tensor]:
         return self.module.state_dict()
-
 
 def save_checkpoint(
     path: str,
@@ -2541,9 +2126,7 @@ def save_checkpoint(
         path,
     )
 
-
 def canonicalize_spectrum_state_dict(state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-    """Map historical spectrum-head tensor names to current module names."""
     aliases = (
         ("neims_spectrum_head.", "path_mass_spectrum_head."),
         ("neims_coordinate_gate.", "mass_coordinate_gate."),
@@ -2563,9 +2146,7 @@ def canonicalize_spectrum_state_dict(state: Dict[str, torch.Tensor]) -> Dict[str
         out[clean] = value
     return out
 
-
 def load_matching_model_weights(checkpoint_path: str, model: nn.Module) -> Tuple[int, int]:
-    """Initialize from a checkpoint, loading only same-name tensors of same shape."""
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     state = checkpoint.get("model", checkpoint) if isinstance(checkpoint, dict) else checkpoint
     if not isinstance(state, dict):
@@ -2580,7 +2161,6 @@ def load_matching_model_weights(checkpoint_path: str, model: nn.Module) -> Tuple
         raise RuntimeError("No compatible model tensors found in " + checkpoint_path)
     model.load_state_dict(matched, strict=False)
     return len(matched), len(current)
-
 
 def load_selected_checkpoint_into_model(
     checkpoint_path: str,
@@ -2597,7 +2177,6 @@ def load_selected_checkpoint_into_model(
     model.load_state_dict(checkpoint["model"], strict=True)
     ema.reset_from(model)
     return checkpoint
-
 
 def train_one_phase(
     *,
@@ -2621,15 +2200,7 @@ def train_one_phase(
         "loss_intensity",
         "loss_spectral",
         "loss_extra_aux",
-        "loss_path_cosine",
-        "loss_path_effect",
-        "loss_mass_coordinate_aux",
-        "loss_batch_spectral_relation",
-        "loss_path_transition",
         "loss_mechanism",
-        "loss_rank",
-        "loss_base",
-        "loss_strong",
     )
 
     for epoch in range(1, epochs + 1):
@@ -2665,20 +2236,16 @@ def train_one_phase(
                     product_token_ids=batch["product_token_ids"],
                     path_type_ids=batch["path_type_ids"],
                     path_mech_ids=batch["path_mech_ids"],
-                    path_parent_mz=batch["path_parent_mz"],
-                    path_product_mz=batch["path_product_mz"],
-                    path_mask=batch["path_mask"],
                     peak_mask=batch["peak_mask"],
                     mz=batch["mz"],
                     mw=batch["mw"],
                     morgan_fp=batch["morgan_fp"],
                     return_logits=True,
                 )
-                pred_raw, ranking_logits, dense_prediction = model_outputs[:3]
+                pred_raw, _, dense_prediction = model_outputs[:3]
                 aux_outputs = model_outputs[3] if len(model_outputs) > 3 else None
                 loss, logs = compute_loss(
                     pred_raw,
-                    ranking_logits,
                     batch["target"],
                     batch["peak_mask"],
                     batch["base_index"],
@@ -2688,9 +2255,6 @@ def train_one_phase(
                     dense_prediction=dense_prediction,
                     dense_gold=batch["dense_gold"],
                     mz=batch["mz"],
-                    path_parent_mz=batch["path_parent_mz"],
-                    path_product_mz=batch["path_product_mz"],
-                    path_mask=batch["path_mask"],
                     aux_outputs=aux_outputs,
                     dense_mechanism_target=batch["dense_mechanism_target"],
                     dense_mechanism_mask=batch["dense_mechanism_mask"],
@@ -2716,8 +2280,7 @@ def train_one_phase(
                 running[key].add_(logs[key].float() * batch_size)
 
             if step % args.print_every == 0 or step == total_micro_steps:
-                # One synchronization for all scalar logs, rather than one
-                # .cpu() call per loss per micro-step.
+
                 stacked = torch.stack([running[key] for key in log_keys]) / max(1, seen_molecules)
                 values = stacked.detach().float().cpu().tolist()
                 averages = dict(zip(log_keys, values))
@@ -2730,11 +2293,8 @@ def train_one_phase(
                     f"lr={optimizer.param_groups[0]['lr']:.3e} mol/s={recent_rate:.2f} "
                     f"total={averages['loss_total']:.5f} "
                     f"union={averages['loss_spectral']:.5f} "
-                    f"rank={averages['loss_rank']:.5f} "
-                    f"base={averages['loss_base']:.5f} "
-                    f"strong={averages['loss_strong']:.5f} "
+                    f"aux={averages['loss_extra_aux']:.5f} "
                     f"int={averages['loss_intensity']:.5f} "
-                    f"batch_rel={averages['loss_batch_spectral_relation']:.5f} "
                     f"mechanism={averages['loss_mechanism']:.5f}"
                 )
 
@@ -2805,11 +2365,8 @@ def train_one_phase(
 
     return {"global_step": global_step}
 
-
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        "Optimized Stage2 Structured Tree-Path Attention trainer"
-    )
+    parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--gold_train_file",
@@ -2840,9 +2397,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num_workers", type=int, default=12)
     parser.add_argument("--prefetch_factor", type=int, default=4)
 
-    # Single-stage Stage1-tree adaptation schedule.
-    # Gold data are retained only for the optional Phase-B replay mixture;
-    # there is no separate Gold-tree warmup phase.
     parser.add_argument("--stage1_epochs", type=int, default=1000)
     parser.add_argument("--stage1_lr", type=float, default=5.0e-5)
     parser.add_argument("--phase_b_gold_ratio", type=float, default=0.08)
@@ -2851,7 +2405,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--ema_decay", type=float, default=0.999)
 
-    # Smaller default capacity; still large enough for structured tree inputs.
     parser.add_argument("--vocab_size", type=int, default=65536)
     parser.add_argument("--d_model", type=int, default=1152)
     parser.add_argument("--n_heads", type=int, default=18)
@@ -2865,24 +2418,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--morgan_fp_dim", type=int, default=4096)
     parser.add_argument("--morgan_radius", type=int, default=2)
 
-    # Similarity-first five-loss objective. Presence/extra losses are fully removed.
-    # Raw loss magnitudes differ, so these are optimization coefficients rather
-    # than percentages. Intensity regression is deliberately weak; exact
-    # union-space cosine and continuous ranking dominate.
     parser.add_argument("--lambda_intensity", type=float, default=0.05)
     parser.add_argument("--lambda_spectral", type=float, default=3.00)
     parser.add_argument("--intensity_power", type=float, default=1.0, help="Power-law calibration applied to predicted intensities before training/evaluation.")
     parser.add_argument("--lambda_extra_aux", type=float, default=0.50)
-    parser.add_argument("--lambda_path_cosine", type=float, default=0.20)
-    parser.add_argument("--lambda_path_mass_aux", "--lambda_mass_coordinate_aux", "--lambda_neims_branch_aux", dest="lambda_mass_coordinate_aux", type=float, default=0.50, metavar="PATH_MASS_AUX_WEIGHT", help="Auxiliary loss weight for the bidirectional path-conditioned mass-intensity head.")
-    parser.add_argument("--lambda_batch_spectral_relation", type=float, default=0.0)
-    parser.add_argument("--lambda_path_transition", type=float, default=0.0,
-                        help="Weight for parent-to-product path-edge log-intensity consistency.")
     parser.add_argument("--lambda_mechanism", type=float, default=0.20)
-    parser.add_argument("--lambda_path_effect", type=float, default=0.25)
-    parser.add_argument("--lambda_rank", type=float, default=0.00)
-    parser.add_argument("--lambda_base", type=float, default=0.00)
-    parser.add_argument("--lambda_strong", type=float, default=0.00)
 
     parser.add_argument(
         "--ablate_intensity_loss",
@@ -2895,24 +2435,6 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Ablation: set lambda_spectral=0 while leaving all other settings unchanged.",
-    )
-    parser.add_argument(
-        "--ablate_ranking_loss",
-        action="store_true",
-        default=False,
-        help="Ablation: set lambda_rank=0 while leaving all other settings unchanged.",
-    )
-    parser.add_argument(
-        "--ablate_base_peak_loss",
-        action="store_true",
-        default=False,
-        help="Ablation: set lambda_base=0 while leaving all other settings unchanged.",
-    )
-    parser.add_argument(
-        "--ablate_strong_peak_loss",
-        action="store_true",
-        default=False,
-        help="Ablation: set lambda_strong=0 while leaving all other settings unchanged.",
     )
     parser.add_argument(
         "--ablate_global_context",
@@ -2991,12 +2513,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strong_peak_extra", type=float, default=1.5)
     parser.add_argument("--strong_peak_threshold", type=float, default=0.30)
     parser.add_argument("--strong_peak_gamma", type=float, default=1.4)
-    parser.add_argument("--strong_peak_topk", type=int, default=5)
-    parser.add_argument("--rank_min_gap", type=float, default=0.015)
-    parser.add_argument("--rank_base_margin", type=float, default=0.03)
-    parser.add_argument("--rank_gap_margin_scale", type=float, default=0.22)
 
-    parser.add_argument("--base_label_smoothing", type=float, default=0.01)
     parser.add_argument("--peak_bucket_multiple", type=int, default=32)
     parser.add_argument("--path_bucket_multiple", type=int, default=8)
     parser.add_argument(
@@ -3053,21 +2570,9 @@ def parse_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
-
 def apply_ablation_overrides(args: argparse.Namespace) -> argparse.Namespace:
-    """
-    Apply optional ablation switches after CLI parsing.
-
-    When no ablation switch is supplied, this function changes nothing.
-    Therefore the original full-model hyperparameters and training schedule
-    remain exactly the same.
-    """
     active: List[str] = []
 
-    # ------------------------------------------------------------
-    # Five loss-level ablations.
-    # Only the selected coefficient is set to zero.
-    # ------------------------------------------------------------
     if args.ablate_intensity_loss:
         args.lambda_intensity = 0.0
         active.append("w/o Intensity loss")
@@ -3076,23 +2581,6 @@ def apply_ablation_overrides(args: argparse.Namespace) -> argparse.Namespace:
         args.lambda_spectral = 0.0
         active.append("w/o Spectral loss")
 
-    if args.ablate_ranking_loss:
-        args.lambda_rank = 0.0
-        active.append("w/o Ranking loss")
-
-    if args.ablate_base_peak_loss:
-        args.lambda_base = 0.0
-        active.append("w/o Base-peak loss")
-
-    if args.ablate_strong_peak_loss:
-        args.lambda_strong = 0.0
-        active.append("w/o Strong-peak loss")
-
-    # ------------------------------------------------------------
-    # Architecture ablations.
-    # These do not alter dimensions, parameter initialization order,
-    # optimizer defaults, loss weights, or data preprocessing.
-    # ------------------------------------------------------------
     if args.ablate_global_context:
         active.append("w/o Global molecular context")
 
@@ -3106,30 +2594,19 @@ def apply_ablation_overrides(args: argparse.Namespace) -> argparse.Namespace:
     if args.ablate_extra_ion_head:
         active.append("w/o Extra-ion spectrum head")
 
-    # ------------------------------------------------------------
-    # Gold-guided curriculum ablation.
-    #
-    # This trainer has no separate Gold-tree warmup. The existing ablation
-    # switch is kept fully backward-compatible and now removes only the
-    # Phase-B Gold replay mixture. Stage1 epochs and all other settings stay
-    # unchanged.
-    # ------------------------------------------------------------
     if args.ablate_gold_guided_curriculum:
         args.phase_b_gold_ratio = 0.0
         active.append("w/o Gold-guided curriculum")
 
-    # Do not allow an accidentally empty objective.
     lambda_values = [
         float(args.lambda_intensity),
         float(args.lambda_spectral),
-        float(args.lambda_rank),
-        float(args.lambda_base),
-        float(args.lambda_strong),
+        float(args.lambda_extra_aux),
         float(args.lambda_mechanism),
     ]
     if all(abs(value) <= 0.0 for value in lambda_values):
         raise ValueError(
-            "All five Stage2 loss coefficients are zero. "
+            "All training loss coefficients are zero. "
             "At least one loss must remain active."
         )
 
@@ -3139,7 +2616,6 @@ def apply_ablation_overrides(args: argparse.Namespace) -> argparse.Namespace:
     args.is_full_model = len(active) == 0
 
     return args
-
 
 def print_ablation_configuration(args: argparse.Namespace) -> None:
     print("\n" + "=" * 80)
@@ -3156,9 +2632,8 @@ def print_ablation_configuration(args: argparse.Namespace) -> None:
         "[LOSS WEIGHTS] "
         f"intensity={args.lambda_intensity}, "
         f"spectral={args.lambda_spectral}, "
-        f"rank={args.lambda_rank}, "
-        f"base={args.lambda_base}, "
-        f"strong={args.lambda_strong}"
+        f"extra_aux={args.lambda_extra_aux}, "
+        f"mechanism={args.lambda_mechanism}"
     )
     print(
         "[MODEL SWITCHES] "
@@ -3173,7 +2648,6 @@ def print_ablation_configuration(args: argparse.Namespace) -> None:
         f"phase_b_gold_ratio={args.phase_b_gold_ratio}"
     )
     print("=" * 80 + "\n")
-
 
 def build_scheduler(
     optimizer: torch.optim.Optimizer,
@@ -3191,7 +2665,6 @@ def build_scheduler(
         return min_lr_ratio + (1.0 - min_lr_ratio) * cosine
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
-
 
 def build_optimizer_and_scheduler(
     model: nn.Module,
@@ -3246,7 +2719,6 @@ def build_optimizer_and_scheduler(
     )
     return optimizer, scheduler
 
-
 def select_probe_dataset(
     stage1_dataset: Optional[Stage2TreeDataset],
     gold_dataset: Optional[Stage2TreeDataset],
@@ -3269,14 +2741,12 @@ def select_probe_dataset(
         ),
     )
 
-
 def auto_tune_batch_size(
     model: nn.Module,
     dataset: Optional[Stage2TreeDataset],
     device: torch.device,
     args: argparse.Namespace,
 ) -> int:
-    """Probe the largest safe batch on the most expensive observed shape."""
     if (
         not args.auto_batch_size
         or device.type != "cuda"
@@ -3335,20 +2805,16 @@ def auto_tune_batch_size(
                     product_token_ids=batch["product_token_ids"],
                     path_type_ids=batch["path_type_ids"],
                     path_mech_ids=batch["path_mech_ids"],
-                    path_parent_mz=batch["path_parent_mz"],
-                    path_product_mz=batch["path_product_mz"],
-                    path_mask=batch["path_mask"],
                     peak_mask=batch["peak_mask"],
                     mz=batch["mz"],
                     mw=batch["mw"],
                     morgan_fp=batch["morgan_fp"],
                     return_logits=True,
                 )
-                pred_raw, ranking_logits, dense_prediction = model_outputs[:3]
+                pred_raw, _, dense_prediction = model_outputs[:3]
                 aux_outputs = model_outputs[3] if len(model_outputs) > 3 else None
                 loss, probe_logs = compute_loss(
                     pred_raw,
-                    ranking_logits,
                     batch["target"],
                     batch["peak_mask"],
                     batch["base_index"],
@@ -3358,9 +2824,6 @@ def auto_tune_batch_size(
                     dense_prediction=dense_prediction,
                     dense_gold=batch["dense_gold"],
                     mz=batch["mz"],
-                    path_parent_mz=batch["path_parent_mz"],
-                    path_product_mz=batch["path_product_mz"],
-                    path_mask=batch["path_mask"],
                     aux_outputs=aux_outputs,
                     dense_mechanism_target=batch["dense_mechanism_target"],
                     dense_mechanism_mask=batch["dense_mechanism_mask"],
@@ -3396,7 +2859,6 @@ def auto_tune_batch_size(
     else:
         print(f"[AutoBatch] selected batch_size={best}")
     return best
-
 
 def main() -> None:
     args = parse_args()
@@ -3568,7 +3030,6 @@ def main() -> None:
     print(f"[INFO] trainable_parameters={trainable_parameters:,}")
     print(f"[INFO] fixed training schedule: {args.stage1_epochs} epochs; final-epoch EMA is saved")
 
-    # BF16 does not require dynamic loss scaling; FP16 keeps GradScaler.
     scaler = torch.amp.GradScaler(
         "cuda",
         enabled=(
@@ -3613,9 +3074,6 @@ def main() -> None:
             "active_ablations": list(args.active_ablations),
             "ablate_intensity_loss": args.ablate_intensity_loss,
             "ablate_spectral_loss": args.ablate_spectral_loss,
-            "ablate_ranking_loss": args.ablate_ranking_loss,
-            "ablate_base_peak_loss": args.ablate_base_peak_loss,
-            "ablate_strong_peak_loss": args.ablate_strong_peak_loss,
             "ablate_global_context": args.ablate_global_context,
             "ablate_path_attention": args.ablate_path_attention,
             "ablate_inter_peak_interaction": args.ablate_inter_peak_interaction,
@@ -3627,37 +3085,20 @@ def main() -> None:
             "types": [
                 "weighted_continuous_intensity_smooth_l1",
                 "union_space_cosine",
-                "bidirectional_mass_coordinate_spectrum_aux",
-                "gold_triplet_mechanism_supervision_and_conditioning",
-                "bidirectional_path_candidate_cosine",
-                "path_log_intensity_residual",
-                "pairwise_ranking",
-                "true_base_peak_classification",
-                "strong_peak_regression",
+                "dense_spectrum_cosine_aux",
+                "gold_triplet_mechanism_supervision",
             ],
             "lambda_intensity": args.lambda_intensity,
             "lambda_spectral": args.lambda_spectral,
             "lambda_extra_aux": args.lambda_extra_aux,
-            "lambda_path_cosine": args.lambda_path_cosine,
-            "lambda_mass_coordinate_aux": args.lambda_mass_coordinate_aux,
-            "lambda_batch_spectral_relation": args.lambda_batch_spectral_relation,
             "lambda_mechanism": args.lambda_mechanism,
-            "lambda_path_effect": args.lambda_path_effect,
-            "lambda_rank": args.lambda_rank,
-            "lambda_base": args.lambda_base,
-            "lambda_strong": args.lambda_strong,
             "smooth_l1_beta": args.smooth_l1_beta,
             "peak_weight_alpha": args.peak_weight_alpha,
             "base_peak_extra": args.base_peak_extra,
             "strong_peak_extra": args.strong_peak_extra,
             "strong_peak_threshold": args.strong_peak_threshold,
             "strong_peak_gamma": args.strong_peak_gamma,
-            "strong_peak_topk": args.strong_peak_topk,
             "spectral_training_space": "stage1_candidates_union_complete_gold",
-            "rank_min_gap": args.rank_min_gap,
-            "rank_base_margin": args.rank_base_margin,
-            "rank_gap_margin_scale": args.rank_gap_margin_scale,
-            "base_label_smoothing": args.base_label_smoothing,
             "intensity_reduction": "per_molecule_then_batch_mean",
             "prediction_normalization": "per_spectrum_base_peak",
             "output_parameterization": "single_softplus_continuous_intensity",
@@ -3733,7 +3174,6 @@ def main() -> None:
     print("Last checkpoint:", os.path.join(args.output_dir, "last.pt"))
     print("Training log:", os.path.join(args.output_dir, "train_log.jsonl"))
     print("Candidate truncation report:", os.path.join(args.output_dir, "candidate_truncation_report.json"))
-
 
 if __name__ == "__main__":
     main()
