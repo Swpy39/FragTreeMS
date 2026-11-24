@@ -92,7 +92,7 @@ The tables compare direct and triplet-input settings, baseline predictors and fu
 <tr><td align="center" nowrap><small>Baseline</small></td><td align="center" nowrap><small>CFM&#8209;ID</small></td><td align="center" nowrap><small>0.294118&nbsp;±&nbsp;0.000000</small></td><td align="center" nowrap><small>0.528892&nbsp;±&nbsp;0.000000</small></td></tr>
 <tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>—</small></td><td align="center" nowrap><small>—</small></td></tr>
 <tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Llama3.1&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.450980&nbsp;±&nbsp;0.006536</small></td><td align="center" nowrap><small>0.724851&nbsp;±&nbsp;0.002479</small></td></tr>
-<tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>—</small></td><td align="center" nowrap><small>—</small></td></tr>
+<tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.448802&nbsp;±&nbsp;0.024705</small></td><td align="center" nowrap><small>0.729116&nbsp;±&nbsp;0.006065</small></td></tr>
 </tbody>
 </table>
 </div>
