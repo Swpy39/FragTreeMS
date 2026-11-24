@@ -4,6 +4,7 @@
   <strong><em>Mechanism-grounded fragmentation trees enable explicit chemical reasoning for electron ionization mass spectrum prediction</em></strong>
 </p>
 
+<p align="center"><sub>Last updated: 2026.11.24</sub></p>
 <p align="center">
   <a href="#overview">🧭 Overview</a> &nbsp;·&nbsp;
   <a href="#chs-benchmark-results">📊 CHS results</a> &nbsp;·&nbsp;
