@@ -154,7 +154,7 @@ FragTreeMS/
 
 ## 🔎 Current scope
 
-The mechanism vocabulary included in this release spans the principal ion formation and fragmentation processes commonly observed in EI mass spectrometry. The main validation datasets focus on 70 eV electron ionization (EI) mass spectra from four hydrocarbon classes: acyclic alkanes, alkenes, cycloalkanes and aromatic hydrocarbons. A supplementary CHS evaluation extends the reported benchmark to sulfur-containing molecules; its results and a worked example are presented at the top of this README.
+The mechanism vocabulary included in this release spans the principal ion-formation and fragmentation processes commonly observed in EI mass spectrometry. The main validation datasets focus on 70 eV electron-ionization (EI) mass spectra from four hydrocarbon classes: acyclic alkanes, alkenes, cycloalkanes and aromatic hydrocarbons. Supplementary evaluations on the CHS and CHO datasets extend the benchmark to compounds that contain sulfur and compounds that contain oxygen.
 
 The tree reasoning experiments use Qwen3-8B, Llama3.1-8B-Instruct and Qwen2.5-14B-Instruct as alternative backbone models. The intensity model uses the same pathway representation and evaluation protocol across backbones.
 
