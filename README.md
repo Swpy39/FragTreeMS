@@ -8,6 +8,7 @@
 <p align="center">
   <a href="#overview">🧭 Overview</a> &nbsp;·&nbsp;
   <a href="#chs-benchmark-results">📊 CHS results</a> &nbsp;·&nbsp;
+  <a href="#cho-benchmark-results">CHO results</a> &nbsp;·&nbsp;
   <a href="#method-workflow">⚙️ Method</a> &nbsp;·&nbsp;
   <a href="#visualization">🔬 Interactive demo</a>
 </p>
@@ -46,40 +47,17 @@ A representative sulfur-containing molecule, its EI spectrum and its mechanism-c
   <strong>Figure S1 | A representative CHS molecule and its EI spectrum, mechanism-coloured fragmentation tree and assigned ion pathways.</strong>
 </p>
 
-<a id="chs-benchmark-results"></a>
-## 📊 CHS benchmark results
+## 📊 CHS and CHO benchmark results
 
-The tables compare direct and triplet-input settings, baseline predictors and full FragTreeMS models.
+Both tables report base-peak accuracy and cosine similarity. CHS full-model results use train round 3 and test round 1; CHO full-model results use train round 1 and test round 7. CFM-ID was evaluated once for CHO.
 
-### 📈 Spectrum-prediction metrics
-
-<p><strong>Direct versus triplet-input settings.</strong> Base-peak accuracy and cosine similarity are shown side by side for each backbone.</p>
-
-<div align="center">
 <table align="center" width="100%" cellpadding="3" cellspacing="0">
-<thead>
-<tr>
-<th align="center" nowrap><small>System&nbsp;/&nbsp;model</small></th>
-<th align="center" nowrap><small>Direct&nbsp;·&nbsp;base&#8209;peak</small></th>
-<th align="center" nowrap><small>Direct&nbsp;·&nbsp;cosine</small></th>
-<th align="center" nowrap><small>Triplets&nbsp;·&nbsp;base&#8209;peak</small></th>
-<th align="center" nowrap><small>Triplets&nbsp;·&nbsp;cosine</small></th>
-</tr>
-</thead>
 <tbody>
-<tr><td align="center" nowrap><small>GPT&nbsp;·&nbsp;GPT&#8209;5.5</small></td><td align="center" nowrap><small>0.320261&nbsp;±&nbsp;0.019608</small></td><td align="center" nowrap><small>0.580188&nbsp;±&nbsp;0.011335</small></td><td align="center" nowrap><small>0.278867&nbsp;±&nbsp;0.003774</small></td><td align="center" nowrap><small>0.554586&nbsp;±&nbsp;0.001029</small></td></tr>
-<tr><td align="center" nowrap><small>DeepSeek&nbsp;·&nbsp;DeepSeek&#8209;V4&#8209;Pro</small></td><td align="center" nowrap><small>0.455338&nbsp;±&nbsp;0.021010</small></td><td align="center" nowrap><small>0.652453&nbsp;±&nbsp;0.003365</small></td><td align="center" nowrap><small>0.411765&nbsp;±&nbsp;0.006536</small></td><td align="center" nowrap><small>0.622592&nbsp;±&nbsp;0.004737</small></td></tr>
-<tr><td align="center" nowrap><small>Local&nbsp;·&nbsp;Qwen3&#8209;8B</small></td><td align="center" nowrap><small>0.039216&nbsp;±&nbsp;0.006536</small></td><td align="center" nowrap><small>0.123006&nbsp;±&nbsp;0.004331</small></td><td align="center" nowrap><small>0.209150&nbsp;±&nbsp;0.013072</small></td><td align="center" nowrap><small>0.190229&nbsp;±&nbsp;0.001188</small></td></tr>
-<tr><td align="center" nowrap><small>Local&nbsp;·&nbsp;Llama3.1&#8209;8B</small></td><td align="center" nowrap><small>0.023965&nbsp;±&nbsp;0.013606</small></td><td align="center" nowrap><small>0.105070&nbsp;±&nbsp;0.004642</small></td><td align="center" nowrap><small>0.067538&nbsp;±&nbsp;0.007547</small></td><td align="center" nowrap><small>0.153230&nbsp;±&nbsp;0.005393</small></td></tr>
-<tr><td align="center" nowrap><small>Local&nbsp;·&nbsp;Qwen2.5&#8209;14B</small></td><td align="center" nowrap><small>0.028322&nbsp;±&nbsp;0.003774</small></td><td align="center" nowrap><small>0.122590&nbsp;±&nbsp;0.005339</small></td><td align="center" nowrap><small>0.034858&nbsp;±&nbsp;0.007547</small></td><td align="center" nowrap><small>0.113549&nbsp;±&nbsp;0.006863</small></td></tr>
-</tbody>
-</table>
-</div>
-
-<p><strong>Baselines and full-model results.</strong></p>
-
-<div align="center">
-<table align="center" width="100%" cellpadding="3" cellspacing="0">
+<tr>
+<td valign="top" width="49%">
+<a id="chs-benchmark-results"></a>
+<p align="center"><strong>CHS</strong></p>
+<table align="center" width="100%" cellpadding="2" cellspacing="0">
 <thead>
 <tr>
 <th align="center" nowrap><small>System</small></th>
@@ -89,6 +67,16 @@ The tables compare direct and triplet-input settings, baseline predictors and fu
 </tr>
 </thead>
 <tbody>
+<tr><td align="center" nowrap><small>GPT</small></td><td align="center" nowrap><small>GPT&#8209;5.5&nbsp;·&nbsp;Direct</small></td><td align="center" nowrap><small>0.320261&nbsp;±&nbsp;0.019608</small></td><td align="center" nowrap><small>0.580188&nbsp;±&nbsp;0.011335</small></td></tr>
+<tr><td align="center" nowrap><small>GPT</small></td><td align="center" nowrap><small>GPT&#8209;5.5&nbsp;·&nbsp;Triplets</small></td><td align="center" nowrap><small>0.278867&nbsp;±&nbsp;0.003774</small></td><td align="center" nowrap><small>0.554586&nbsp;±&nbsp;0.001029</small></td></tr>
+<tr><td align="center" nowrap><small>DeepSeek</small></td><td align="center" nowrap><small>DeepSeek&#8209;V4&#8209;Pro&nbsp;·&nbsp;Direct</small></td><td align="center" nowrap><small>0.455338&nbsp;±&nbsp;0.021010</small></td><td align="center" nowrap><small>0.652453&nbsp;±&nbsp;0.003365</small></td></tr>
+<tr><td align="center" nowrap><small>DeepSeek</small></td><td align="center" nowrap><small>DeepSeek&#8209;V4&#8209;Pro&nbsp;·&nbsp;Triplets</small></td><td align="center" nowrap><small>0.411765&nbsp;±&nbsp;0.006536</small></td><td align="center" nowrap><small>0.622592&nbsp;±&nbsp;0.004737</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Direct</small></td><td align="center" nowrap><small>0.039216&nbsp;±&nbsp;0.006536</small></td><td align="center" nowrap><small>0.123006&nbsp;±&nbsp;0.004331</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Triplets</small></td><td align="center" nowrap><small>0.209150&nbsp;±&nbsp;0.013072</small></td><td align="center" nowrap><small>0.190229&nbsp;±&nbsp;0.001188</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Llama3.1&#8209;8B&nbsp;·&nbsp;Direct</small></td><td align="center" nowrap><small>0.023965&nbsp;±&nbsp;0.013606</small></td><td align="center" nowrap><small>0.105070&nbsp;±&nbsp;0.004642</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Llama3.1&#8209;8B&nbsp;·&nbsp;Triplets</small></td><td align="center" nowrap><small>0.067538&nbsp;±&nbsp;0.007547</small></td><td align="center" nowrap><small>0.153230&nbsp;±&nbsp;0.005393</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Direct</small></td><td align="center" nowrap><small>0.028322&nbsp;±&nbsp;0.003774</small></td><td align="center" nowrap><small>0.122590&nbsp;±&nbsp;0.005339</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Triplets</small></td><td align="center" nowrap><small>0.034858&nbsp;±&nbsp;0.007547</small></td><td align="center" nowrap><small>0.113549&nbsp;±&nbsp;0.006863</small></td></tr>
 <tr><td align="center" nowrap><small>Baseline</small></td><td align="center" nowrap><small>NEIMS</small></td><td align="center" nowrap><small>0.457516&nbsp;±&nbsp;0.017292</small></td><td align="center" nowrap><small>0.737847&nbsp;±&nbsp;0.001619</small></td></tr>
 <tr><td align="center" nowrap><small>Baseline</small></td><td align="center" nowrap><small>CFM&#8209;ID</small></td><td align="center" nowrap><small>0.294118&nbsp;±&nbsp;0.000000</small></td><td align="center" nowrap><small>0.528892&nbsp;±&nbsp;0.000000</small></td></tr>
 <tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.490196&nbsp;±&nbsp;0.017292</small></td><td align="center" nowrap><small>0.735000&nbsp;±&nbsp;0.003529</small></td></tr>
@@ -96,15 +84,12 @@ The tables compare direct and triplet-input settings, baseline predictors and fu
 <tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.448802&nbsp;±&nbsp;0.024705</small></td><td align="center" nowrap><small>0.729116&nbsp;±&nbsp;0.006065</small></td></tr>
 </tbody>
 </table>
-</div>
-
+</td>
+<td width="2%">&nbsp;</td>
+<td valign="top" width="49%">
 <a id="cho-benchmark-results"></a>
-## 🍃 CHO benchmark results
-
-Base-peak accuracy and cosine similarity on the CHO test set.
-
-<div align="center">
-<table align="center" width="100%" cellpadding="3" cellspacing="0">
+<p align="center"><strong>CHO</strong></p>
+<table align="center" width="100%" cellpadding="2" cellspacing="0">
 <thead>
 <tr>
 <th align="center" nowrap><small>System</small></th>
@@ -127,8 +112,10 @@ Base-peak accuracy and cosine similarity on the CHO test set.
 <tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.421296&nbsp;±&nbsp;0.016038</small></td><td align="center" nowrap><small>0.701659&nbsp;±&nbsp;0.002526</small></td></tr>
 </tbody>
 </table>
-</div>
-
+</td>
+</tr>
+</tbody>
+</table>
 <a id="method-workflow"></a>
 ## ⚙️ Method workflow
 
