@@ -117,6 +117,7 @@ Both tables report base-peak accuracy and cosine similarity.
 </tbody>
 </table>
 <a id="method-workflow"></a>
+
 ## ⚙️ Method workflow
 
 1. **Annotation curation.** Initial mechanism annotations are generated with GPT-4.1, refined in a second GPT-4.1 pass, completed and corrected with GPT-5, and then reviewed manually. The released annotations are therefore curated records rather than unreviewed model outputs.
