@@ -49,7 +49,7 @@ A representative sulfur-containing molecule, its EI spectrum and its mechanism-c
 
 ## 📊 CHS and CHO benchmark results
 
-Both tables report base-peak accuracy and cosine similarity. CHS full-model results use train round 3 and test round 1; CHO full-model results use train round 1 and test round 7. CFM-ID was evaluated once for CHO.
+Both tables report base-peak accuracy and cosine similarity.
 
 <table align="center" width="100%" cellpadding="3" cellspacing="0">
 <tbody>
