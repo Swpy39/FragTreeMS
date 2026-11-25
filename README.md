@@ -19,7 +19,7 @@ FragTreeMS makes EI ion formation explicit as a source-mechanism-product fragmen
 
 <p align="center">
   <a href="./Images/Main.pdf">
-    <img src="./Images/Main-preview.png"
+    <img src="./Images/Main.png"
          alt="FragTreeMS framework: fragmentation-tree generation and repair followed by pathway-conditioned intensity prediction"
          width="80%">
   </a>
