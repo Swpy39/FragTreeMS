@@ -101,7 +101,7 @@ The tables compare direct and triplet-input settings, baseline predictors and fu
 <a id="cho-benchmark-results"></a>
 ## 🍃 CHO benchmark results
 
-Base-peak accuracy and cosine similarity on the CHO test set (72 molecules). Full-model results use train round 1 and test round 7; CFM-ID was evaluated once.
+Base-peak accuracy and cosine similarity on the CHO test set.
 
 <div align="center">
 <table align="center" width="100%" cellpadding="3" cellspacing="0">
