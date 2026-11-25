@@ -4,7 +4,7 @@
   <strong><em>Mechanism-grounded fragmentation trees enable explicit chemical reasoning for electron ionization mass spectrum prediction</em></strong>
 </p>
 
-<p align="center"><sub>Last updated: 2026.11.24</sub></p>
+<p align="center"><sub>Last updated: 2026.11.25</sub></p>
 <p align="center">
   <a href="#overview">🧭 Overview</a> &nbsp;·&nbsp;
   <a href="#chs-benchmark-results">📊 CHS results</a> &nbsp;·&nbsp;
@@ -94,6 +94,37 @@ The tables compare direct and triplet-input settings, baseline predictors and fu
 <tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.490196&nbsp;±&nbsp;0.017292</small></td><td align="center" nowrap><small>0.735000&nbsp;±&nbsp;0.003529</small></td></tr>
 <tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Llama3.1&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.450980&nbsp;±&nbsp;0.006536</small></td><td align="center" nowrap><small>0.724851&nbsp;±&nbsp;0.002479</small></td></tr>
 <tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.448802&nbsp;±&nbsp;0.024705</small></td><td align="center" nowrap><small>0.729116&nbsp;±&nbsp;0.006065</small></td></tr>
+</tbody>
+</table>
+</div>
+
+<a id="cho-benchmark-results"></a>
+## 🍃 CHO benchmark results
+
+Base-peak accuracy and cosine similarity on the CHO test set (72 molecules). Full-model results use train round 1 and test round 7; CFM-ID was evaluated once.
+
+<div align="center">
+<table align="center" width="100%" cellpadding="3" cellspacing="0">
+<thead>
+<tr>
+<th align="center" nowrap><small>System</small></th>
+<th align="center" nowrap><small>Model&nbsp;/&nbsp;setting</small></th>
+<th align="center" nowrap><small>Base&#8209;peak&nbsp;accuracy</small></th>
+<th align="center" nowrap><small>Cosine</small></th>
+</tr>
+</thead>
+<tbody>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Direct</small></td><td align="center" nowrap><small>0.046296&nbsp;±&nbsp;0.008019</small></td><td align="center" nowrap><small>0.243866&nbsp;±&nbsp;0.005813</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Triplets</small></td><td align="center" nowrap><small>0.032407&nbsp;±&nbsp;0.008019</small></td><td align="center" nowrap><small>0.175223&nbsp;±&nbsp;0.012039</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Llama3.1&#8209;8B&nbsp;·&nbsp;Direct</small></td><td align="center" nowrap><small>0.120370&nbsp;±&nbsp;0.016038</small></td><td align="center" nowrap><small>0.314998&nbsp;±&nbsp;0.001243</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Llama3.1&#8209;8B&nbsp;·&nbsp;Triplets</small></td><td align="center" nowrap><small>0.060185&nbsp;±&nbsp;0.008019</small></td><td align="center" nowrap><small>0.196809&nbsp;±&nbsp;0.013111</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Direct</small></td><td align="center" nowrap><small>0.115741&nbsp;±&nbsp;0.021216</small></td><td align="center" nowrap><small>0.275989&nbsp;±&nbsp;0.006050</small></td></tr>
+<tr><td align="center" nowrap><small>Local</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Triplets</small></td><td align="center" nowrap><small>0.069444&nbsp;±&nbsp;0.000000</small></td><td align="center" nowrap><small>0.253684&nbsp;±&nbsp;0.015794</small></td></tr>
+<tr><td align="center" nowrap><small>Baseline</small></td><td align="center" nowrap><small>NEIMS</small></td><td align="center" nowrap><small>0.430556&nbsp;±&nbsp;0.036747</small></td><td align="center" nowrap><small>0.710813&nbsp;±&nbsp;0.002057</small></td></tr>
+<tr><td align="center" nowrap><small>Baseline</small></td><td align="center" nowrap><small>CFM&#8209;ID</small></td><td align="center" nowrap><small>0.388889&nbsp;±&nbsp;0.000000</small></td><td align="center" nowrap><small>0.616766&nbsp;±&nbsp;0.000000</small></td></tr>
+<tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen3&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.407407&nbsp;±&nbsp;0.008019</small></td><td align="center" nowrap><small>0.701937&nbsp;±&nbsp;0.001249</small></td></tr>
+<tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Llama3.1&#8209;8B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.449074&nbsp;±&nbsp;0.008019</small></td><td align="center" nowrap><small>0.705430&nbsp;±&nbsp;0.004012</small></td></tr>
+<tr><td align="center" nowrap><small>FragTreeMS</small></td><td align="center" nowrap><small>Qwen2.5&#8209;14B&nbsp;·&nbsp;Full&nbsp;model</small></td><td align="center" nowrap><small>0.421296&nbsp;±&nbsp;0.016038</small></td><td align="center" nowrap><small>0.701659&nbsp;±&nbsp;0.002526</small></td></tr>
 </tbody>
 </table>
 </div>
